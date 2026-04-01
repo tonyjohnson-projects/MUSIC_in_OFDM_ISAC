@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import subprocess
 import sys
 import tempfile
@@ -22,7 +23,7 @@ from aisle_isac.metrics import evaluate_trial
 from aisle_isac.ofdm import azimuth_steering_matrix, doppler_steering_matrix, range_steering_matrix
 from aisle_isac.reporting import write_all_outputs
 from aisle_isac.scenarios import build_study_config
-from aisle_isac.study import _build_sweep_point_specs, nominal_trial_parameters, run_study, simulate_trial
+from aisle_isac.study import PUBLIC_SWEEP_NAMES, SUBMISSION_SWEEP_NAMES, _build_sweep_point_specs, nominal_trial_parameters, run_study, simulate_trial
 
 
 REPO_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
@@ -67,7 +68,7 @@ class IsacSimulatorTest(unittest.TestCase):
             self.assertGreater(cfg.sampled_occupied_bandwidth_hz, 0.9 * cfg.anchor.occupied_bandwidth_hz)
 
     def test_every_sweep_point_truth_lies_inside_search_domain(self) -> None:
-        for sweep_name in ("range_separation", "velocity_separation", "angle_separation", "absolute_range", "burst_profile", "aperture", "resource_fraction"):
+        for sweep_name in PUBLIC_SWEEP_NAMES:
             specs = _build_sweep_point_specs("fr1", "open_aisle", "quick", 8, "headline", sweep_name)
             for spec in specs:
                 cfg = build_study_config(
@@ -79,11 +80,6 @@ class IsacSimulatorTest(unittest.TestCase):
                     spec.suite,
                     trial_count_override=spec.trial_count,
                 )
-                if spec.n_subcarriers_override is not None:
-                    from dataclasses import replace as dc_replace
-                    cfg = dc_replace(cfg, runtime_profile=dc_replace(
-                        cfg.runtime_profile, n_simulated_subcarriers=spec.n_subcarriers_override,
-                    ))
                 params = TrialParameters(
                     center_range_m=spec.center_range_m,
                     range_separation_m=spec.range_separation_m,
@@ -281,6 +277,13 @@ class IsacSimulatorTest(unittest.TestCase):
             fbss_successes += int(trial.metrics["fbss"].joint_resolution_success)
         self.assertGreaterEqual(fbss_successes, music_successes)
 
+    def test_nominal_full_search_music_detects_both_targets(self) -> None:
+        cfg = build_study_config("fr1", "open_aisle", "quick")
+        trial = simulate_trial(cfg, nominal_trial_parameters(cfg), np.random.default_rng(0))
+        metrics = trial.metrics["music_full"]
+        self.assertTrue(metrics.joint_detection_success)
+        self.assertEqual(metrics.matched_target_count, cfg.expected_target_count)
+
     def test_report_outputs_use_distinct_nominal_csv_schemas(self) -> None:
         studies = [
             run_study(build_study_config("fr1", "open_aisle", "quick", suite="headline", trial_count_override=1), max_workers=1),
@@ -314,6 +317,36 @@ class IsacSimulatorTest(unittest.TestCase):
             self.assertNotEqual(scene_header, fr_header)
             self.assertNotEqual(scene_header, crb_header)
 
+    def test_selected_sweep_outputs_respect_requested_artifact_set(self) -> None:
+        study = run_study(
+            build_study_config("fr1", "open_aisle", "quick", suite="headline", trial_count_override=1),
+            max_workers=1,
+            sweep_names=SUBMISSION_SWEEP_NAMES,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = Path(tmpdir)
+            write_all_outputs(
+                [study],
+                output_root,
+                clean_outputs=True,
+                sweep_names=SUBMISSION_SWEEP_NAMES,
+                include_scene_comparison=False,
+                include_fr1_vs_fr2=False,
+                include_crb_gap=False,
+                include_representative_cube_slices=False,
+            )
+            for sweep_name in SUBMISSION_SWEEP_NAMES:
+                self.assertTrue((output_root / "data" / f"{sweep_name}.csv").exists())
+                self.assertTrue((output_root / "figures" / f"{sweep_name}.png").exists())
+            self.assertEqual(
+                sorted(path.name for path in (output_root / "data").iterdir()),
+                sorted(f"{sweep_name}.csv" for sweep_name in SUBMISSION_SWEEP_NAMES),
+            )
+            self.assertEqual(
+                sorted(path.name for path in (output_root / "figures").iterdir()),
+                sorted(f"{sweep_name}.png" for sweep_name in SUBMISSION_SWEEP_NAMES),
+            )
+
     def test_cli_smoke_fr1_open_aisle_without_uv(self) -> None:
         result = subprocess.run(
             [
@@ -341,8 +374,81 @@ class IsacSimulatorTest(unittest.TestCase):
         )
         self.assertIn("Private-5G Angle-Range-Doppler Study", result.stdout)
         self.assertTrue((REPO_ROOT / "results" / "quick" / "data" / "range_separation.csv").exists())
-        self.assertTrue((REPO_ROOT / "results" / "quick" / "data" / "resource_fraction.csv").exists())
+        self.assertTrue((REPO_ROOT / "results" / "quick" / "data" / "absolute_range.csv").exists())
         self.assertTrue((REPO_ROOT / "results" / "quick" / "figures" / "scene_comparison.png").exists())
+        self.assertFalse((REPO_ROOT / "results" / "quick" / "data" / "fr1_vs_fr2.csv").exists())
+
+    def test_submission_bundle_smoke(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "PYTHON_BIN": str(REPO_PYTHON),
+                "JOBS": "1",
+                "TRIALS": "1",
+                "CLEAN_OUTPUTS": "1",
+            }
+        )
+        subprocess.run(
+            ["bash", "scripts/build_submission_bundle.sh"],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=True,
+        )
+        submission_root = REPO_ROOT / "results" / "submission"
+        for filename in (
+            "range_separation.csv",
+            "velocity_separation.csv",
+            "angle_separation.csv",
+            "burst_profile.csv",
+            "aperture.csv",
+            "scene_comparison.csv",
+            "crb_gap.csv",
+            "build_manifest.txt",
+        ):
+            self.assertTrue((submission_root / "data" / filename).exists() if filename.endswith(".csv") else (submission_root / filename).exists())
+        expected_figures = (
+            "range_separation.png",
+            "velocity_separation.png",
+            "angle_separation.png",
+            "burst_profile.png",
+            "aperture.png",
+            "scene_comparison.png",
+            "crb_gap.png",
+            "representative_cube_slices.png",
+        )
+        for filename in expected_figures:
+            self.assertTrue((submission_root / "figures" / filename).exists())
+        self.assertEqual(
+            sorted(path.name for path in (submission_root / "data").iterdir()),
+            sorted(
+                (
+                    "range_separation.csv",
+                    "velocity_separation.csv",
+                    "angle_separation.csv",
+                    "burst_profile.csv",
+                    "aperture.csv",
+                    "scene_comparison.csv",
+                    "crb_gap.csv",
+                )
+            ),
+        )
+        self.assertEqual(
+            sorted(path.name for path in (submission_root / "figures").iterdir()),
+            sorted(expected_figures),
+        )
+        for filename in (
+            "absolute_range.csv",
+            "fr1_vs_fr2.csv",
+        ):
+            self.assertFalse((submission_root / "data" / filename).exists())
+        for filename in (
+            "absolute_range.png",
+            "fr1_vs_fr2.png",
+        ):
+            self.assertFalse((submission_root / "figures" / filename).exists())
 
 
 if __name__ == "__main__":

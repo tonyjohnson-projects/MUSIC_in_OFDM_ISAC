@@ -31,6 +31,23 @@ METHOD_LABELS = {
     "music_full": "Full-Search MUSIC",
 }
 
+PUBLIC_SWEEP_NAMES = (
+    "range_separation",
+    "velocity_separation",
+    "angle_separation",
+    "absolute_range",
+    "burst_profile",
+    "aperture",
+)
+
+SUBMISSION_SWEEP_NAMES = (
+    "range_separation",
+    "velocity_separation",
+    "angle_separation",
+    "burst_profile",
+    "aperture",
+)
+
 
 @dataclass(frozen=True)
 class TrialResult:
@@ -63,7 +80,6 @@ class SweepPointSpec:
     range_separation_m: float
     velocity_separation_mps: float
     angle_separation_deg: float
-    n_subcarriers_override: int | None = None
 
 
 @dataclass(frozen=True)
@@ -312,42 +328,6 @@ def _build_sweep_point_specs(
             )
         return point_specs
 
-    if sweep_name == "resource_fraction":
-        subcarrier_counts = _suite_values(
-            suite,
-            (32, 64, 96, 192, 384),
-            (24, 48, 96, 192, 384, 768),
-        )
-        for point_index, n_sc in enumerate(subcarrier_counts):
-            n_sc = int(n_sc)
-            cfg = build_study_config(anchor_name, scene_name, profile_name, "balanced_cpi", 8, suite)
-            params = nominal_trial_parameters(cfg)
-            physical_count = cfg.anchor.physical_subcarrier_count
-            sensing_fraction = n_sc / physical_count
-            point_specs.append(
-                SweepPointSpec(
-                    point_index=point_index,
-                    sweep_name=sweep_name,
-                    parameter_name="sensing_subcarriers",
-                    parameter_label="Sensing Subcarriers",
-                    parameter_value=f"{n_sc:d}",
-                    parameter_numeric_value=float(n_sc),
-                    anchor_name=anchor_name,
-                    scene_name=scene_name,
-                    profile_name=profile_name,
-                    trial_count=trial_count,
-                    suite=suite,
-                    burst_profile_name="balanced_cpi",
-                    rx_columns=8,
-                    center_range_m=params.center_range_m,
-                    range_separation_m=params.range_separation_m,
-                    velocity_separation_mps=params.velocity_separation_mps,
-                    angle_separation_deg=params.angle_separation_deg,
-                    n_subcarriers_override=n_sc,
-                )
-            )
-        return point_specs
-
     raise ValueError(f"Unsupported sweep_name: {sweep_name}")
 
 
@@ -404,10 +384,6 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
         suite=task.suite,
         trial_count_override=task.trial_count,
     )
-    if task.n_subcarriers_override is not None:
-        cfg = replace(cfg, runtime_profile=replace(
-            cfg.runtime_profile, n_simulated_subcarriers=task.n_subcarriers_override,
-        ))
     params = TrialParameters(
         center_range_m=task.center_range_m,
         range_separation_m=task.range_separation_m,
@@ -520,20 +496,13 @@ def run_study(
     show_progress: bool = False,
     max_workers: int | None = None,
     suite: str | None = None,
+    sweep_names: tuple[str, ...] | None = None,
 ) -> SceneStudyResult:
     """Run all public sweeps for one anchor and scene class."""
 
     suite = suite or cfg.sweep_suite
     max_workers = max_workers if max_workers is not None else _default_max_workers()
-    sweep_names = (
-        "range_separation",
-        "velocity_separation",
-        "angle_separation",
-        "absolute_range",
-        "burst_profile",
-        "aperture",
-        "resource_fraction",
-    )
+    sweep_names = sweep_names or PUBLIC_SWEEP_NAMES
     sweeps = [
         _run_sweep(
             cfg.anchor.name,

@@ -351,12 +351,122 @@ def _matched_filter_score(
     return float(np.abs(response))
 
 
+def _max_output_detections(cfg: StudyConfig) -> int:
+    return max(1, cfg.expected_target_count)
+
+
+def _build_detection(
+    cfg: StudyConfig,
+    radar_cube: np.ndarray,
+    range_m: float,
+    velocity_mps: float,
+    azimuth_deg: float,
+) -> Detection:
+    azimuth_weights = azimuth_steering_matrix(
+        cfg.effective_horizontal_positions_m,
+        np.array([azimuth_deg]),
+        cfg.wavelength_m,
+    )[:, 0]
+    azimuth_weights /= np.sqrt(max(1, azimuth_weights.size))
+    range_weights = range_steering_matrix(cfg.frequencies_hz, np.array([range_m]))[:, 0]
+    doppler_weights = doppler_steering_matrix(
+        cfg.snapshot_times_s,
+        np.array([velocity_mps]),
+        cfg.wavelength_m,
+    )[:, 0]
+    return Detection(
+        range_m=float(range_m),
+        velocity_mps=float(velocity_mps),
+        azimuth_deg=float(azimuth_deg),
+        score=_matched_filter_score(radar_cube, azimuth_weights, range_weights, doppler_weights),
+    )
+
+
+def _refine_detection_local(
+    cfg: StudyConfig,
+    radar_cube: np.ndarray,
+    coarse_detection: Detection,
+    search_bounds: SearchBounds,
+    range_upper_bound_m: float | None = None,
+) -> Detection:
+    """Refine one coarse candidate with bounded matched-filter coordinate descent."""
+
+    range_upper = search_bounds.range_max_m if range_upper_bound_m is None else min(
+        search_bounds.range_max_m,
+        range_upper_bound_m,
+    )
+    refined_range_m = coarse_detection.range_m
+    refined_velocity_mps = coarse_detection.velocity_mps
+    refined_azimuth_deg = coarse_detection.azimuth_deg
+
+    def _score(azimuth_deg: float, range_m: float, velocity_mps: float) -> float:
+        return _build_detection(
+            cfg,
+            radar_cube,
+            range_m=range_m,
+            velocity_mps=velocity_mps,
+            azimuth_deg=azimuth_deg,
+        ).score
+
+    for _ in range(2):
+        azimuth_grid = _bounded_grid(
+            refined_azimuth_deg,
+            cfg.azimuth_resolution_deg,
+            max(-80.0, search_bounds.azimuth_min_deg),
+            min(80.0, search_bounds.azimuth_max_deg),
+            21,
+        )
+        refined_azimuth_deg = float(
+            max(
+                azimuth_grid,
+                key=lambda azimuth_deg: _score(azimuth_deg, refined_range_m, refined_velocity_mps),
+            )
+        )
+
+        range_grid = _bounded_grid(
+            refined_range_m,
+            2.5 * cfg.range_resolution_m,
+            max(0.5, search_bounds.range_min_m),
+            range_upper,
+            41,
+        )
+        refined_range_m = float(
+            max(
+                range_grid,
+                key=lambda range_m: _score(refined_azimuth_deg, range_m, refined_velocity_mps),
+            )
+        )
+
+        velocity_grid = _bounded_grid(
+            refined_velocity_mps,
+            cfg.velocity_resolution_mps,
+            search_bounds.velocity_min_mps,
+            search_bounds.velocity_max_mps,
+            21,
+        )
+        refined_velocity_mps = float(
+            max(
+                velocity_grid,
+                key=lambda velocity_mps: _score(refined_azimuth_deg, refined_range_m, velocity_mps),
+            )
+        )
+
+    return _build_detection(
+        cfg,
+        radar_cube,
+        range_m=refined_range_m,
+        velocity_mps=refined_velocity_mps,
+        azimuth_deg=refined_azimuth_deg,
+    )
+
+
 def _run_fft_estimator(
+    cfg: StudyConfig,
     frontend: FrontendArtifacts,
 ) -> MethodEstimate:
     return MethodEstimate(
         label="Angle-Range-Doppler FFT",
-        detections=frontend.coarse_candidates,
+        detections=frontend.coarse_candidates[: _max_output_detections(cfg)],
         estimated_model_order=len(frontend.coarse_candidates),
         frontend_runtime_s=frontend.frontend_runtime_s,
         incremental_runtime_s=0.0,
@@ -513,7 +623,7 @@ def _run_staged_music(
     incremental_runtime_s = time.perf_counter() - start_time
     return MethodEstimate(
         label="FFT-Seeded Azimuth MUSIC + FBSS" if use_fbss else "FFT-Seeded Staged Azimuth MUSIC",
-        detections=tuple(merged[: cfg.runtime_profile.coarse_candidate_count]),
+        detections=tuple(merged[: _max_output_detections(cfg)]),
         estimated_model_order=global_order,
         frontend_runtime_s=frontend_runtime_s,
         incremental_runtime_s=incremental_runtime_s,
@@ -563,6 +673,7 @@ def _run_full_search_music(
             max_sources=min(4, global_cov.shape[0] - 1),
         ),
     )
+    target_order = _max_output_detections(cfg)
 
     # --- 2. Full azimuth search ---
     n_az_grid = cfg.runtime_profile.music_grid_points * 3
@@ -581,7 +692,7 @@ def _run_full_search_music(
 
     azimuth_spectrum = music_pseudospectrum(
         spatial_cov,
-        n_targets=global_order,
+        n_targets=target_order,
         steering_matrix=azimuth_steering_matrix(spatial_positions, azimuth_grid, cfg.wavelength_m),
     )
 
@@ -589,7 +700,7 @@ def _run_full_search_music(
     if az_peak_idx.size == 0:
         az_peak_idx = np.array([int(np.argmax(azimuth_spectrum))])
     az_scores = azimuth_spectrum[az_peak_idx]
-    top_k = min(cfg.runtime_profile.coarse_candidate_count, az_peak_idx.size)
+    top_k = min(target_order, az_peak_idx.size)
     top_az_idx = az_peak_idx[np.argsort(az_scores)[-top_k:]]
     azimuth_candidates = azimuth_grid[top_az_idx]
 
@@ -608,7 +719,11 @@ def _run_full_search_music(
     range_search_upper = min(search_bounds.range_max_m, max_unambiguous_range_m)
 
     refined_candidates: list[Detection] = []
-    n_range_grid = cfg.runtime_profile.music_grid_points * 2
+    range_grid_step_m = max(0.5 * cfg.range_resolution_m, 0.25)
+    n_range_grid = max(
+        cfg.runtime_profile.music_grid_points * 2,
+        int(np.ceil((range_search_upper - max(0.5, search_bounds.range_min_m)) / range_grid_step_m)) + 1,
+    )
     for az_deg in azimuth_candidates:
         az_weights = azimuth_steering_matrix(
             horizontal_positions, np.array([az_deg]), cfg.wavelength_m
@@ -622,17 +737,9 @@ def _run_full_search_music(
             n_range_grid,
         )
         range_cov = covariance_matrix(beamformed)
-        range_order = max(
-            1,
-            estimate_model_order_mdl(
-                range_cov,
-                snapshot_count=beamformed.shape[1],
-                max_sources=min(4, range_cov.shape[0] - 1),
-            ),
-        )
         range_spectrum = music_pseudospectrum(
             range_cov,
-            n_targets=range_order,
+            n_targets=1,
             steering_matrix=range_steering_matrix(cfg.frequencies_hz, range_grid),
         )
         r_peak_idx = _1d_peak_indices(range_spectrum, min_distance=max(1, n_range_grid // 30))
@@ -653,31 +760,25 @@ def _run_full_search_music(
             )
             doppler_signal = (beamformed * range_weights.conj()[:, np.newaxis]).T
             doppler_cov = covariance_matrix(doppler_signal)
-            doppler_order = max(
-                1,
-                estimate_model_order_mdl(
-                    doppler_cov,
-                    snapshot_count=doppler_signal.shape[1],
-                    max_sources=min(4, doppler_cov.shape[0] - 1),
-                ),
-            )
             doppler_spectrum = music_pseudospectrum(
                 doppler_cov,
-                n_targets=doppler_order,
+                n_targets=1,
                 steering_matrix=doppler_steering_matrix(cfg.snapshot_times_s, doppler_grid, cfg.wavelength_m),
             )
             v_mps = float(doppler_grid[int(np.argmax(doppler_spectrum))])
 
-            doppler_weights = doppler_steering_matrix(
-                cfg.snapshot_times_s, np.array([v_mps]), cfg.wavelength_m
-            )[:, 0]
-
             refined_candidates.append(
-                Detection(
-                    range_m=r_m,
-                    velocity_mps=v_mps,
-                    azimuth_deg=float(az_deg),
-                    score=_matched_filter_score(radar_cube, az_weights, range_weights, doppler_weights),
+                _refine_detection_local(
+                    cfg,
+                    radar_cube,
+                    coarse_detection=Detection(
+                        range_m=r_m,
+                        velocity_mps=v_mps,
+                        azimuth_deg=float(az_deg),
+                        score=0.0,
+                    ),
+                    search_bounds=search_bounds,
+                    range_upper_bound_m=range_search_upper,
                 )
             )
 
@@ -691,7 +792,7 @@ def _run_full_search_music(
     incremental_runtime_s = time.perf_counter() - start_time
     return MethodEstimate(
         label=label,
-        detections=tuple(merged[: cfg.runtime_profile.coarse_candidate_count]),
+        detections=tuple(merged[: _max_output_detections(cfg)]),
         estimated_model_order=global_order,
         frontend_runtime_s=frontend_runtime_s,
         incremental_runtime_s=incremental_runtime_s,
@@ -719,7 +820,7 @@ def run_estimators(
         frontend = prepare_frontend(cfg, radar_cube, fft_cube=fft_cube, coarse_candidates=coarse_candidates)
 
     return {
-        "fft": _run_fft_estimator(frontend),
+        "fft": _run_fft_estimator(cfg, frontend),
         "music": _run_staged_music(
             cfg,
             radar_cube,

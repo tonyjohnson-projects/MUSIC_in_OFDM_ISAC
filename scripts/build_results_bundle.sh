@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-"$ROOT_DIR/.venv/bin/python"}"
-PROFILE="${PROFILE:-paper}"
+PROFILE="${PROFILE:-submission}"
 SUITE="${SUITE:-headline}"
 ANCHOR="${ANCHOR:-all}"
 SCENE_CLASS="${SCENE_CLASS:-all}"

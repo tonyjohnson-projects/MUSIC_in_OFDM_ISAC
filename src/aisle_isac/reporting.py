@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from aisle_isac.study import METHOD_LABELS, METHOD_ORDER, SceneStudyResult, SweepResult
+from aisle_isac.study import METHOD_LABELS, METHOD_ORDER, PUBLIC_SWEEP_NAMES, SceneStudyResult, SweepResult
 
 
 METHOD_COLORS = {
@@ -539,20 +539,17 @@ def write_all_outputs(
     studies: list[SceneStudyResult],
     root_dir: Path,
     clean_outputs: bool,
+    sweep_names: tuple[str, ...] | None = None,
+    include_scene_comparison: bool = True,
+    include_fr1_vs_fr2: bool = True,
+    include_crb_gap: bool = True,
+    include_representative_cube_slices: bool = True,
 ) -> None:
     """Write all public CSVs and figures for the requested study bundle."""
 
     data_dir, figures_dir = prepare_output_directories(root_dir, clean_outputs=clean_outputs)
-    sweep_names = (
-        "range_separation",
-        "velocity_separation",
-        "angle_separation",
-        "absolute_range",
-        "burst_profile",
-        "aperture",
-        "resource_fraction",
-    )
-    for sweep_name in sweep_names:
+    selected_sweep_names = sweep_names or PUBLIC_SWEEP_NAMES
+    for sweep_name in selected_sweep_names:
         sweeps = [
             sweep
             for study in studies
@@ -561,18 +558,20 @@ def write_all_outputs(
         ]
         write_tidy_sweep_csv(data_dir / f"{sweep_name}.csv", sweeps)
 
-    write_scene_comparison_csv(data_dir / "scene_comparison.csv", studies)
-    write_fr1_vs_fr2_csv(data_dir / "fr1_vs_fr2.csv", studies)
-    write_crb_gap_csv(data_dir / "crb_gap.csv", studies)
+    if include_scene_comparison:
+        write_scene_comparison_csv(data_dir / "scene_comparison.csv", studies)
+    if include_fr1_vs_fr2:
+        write_fr1_vs_fr2_csv(data_dir / "fr1_vs_fr2.csv", studies)
+    if include_crb_gap:
+        write_crb_gap_csv(data_dir / "crb_gap.csv", studies)
 
-    _plot_sweep_grid(figures_dir / "range_separation.png", studies, "range_separation")
-    _plot_sweep_grid(figures_dir / "velocity_separation.png", studies, "velocity_separation")
-    _plot_sweep_grid(figures_dir / "angle_separation.png", studies, "angle_separation")
-    _plot_sweep_grid(figures_dir / "absolute_range.png", studies, "absolute_range")
-    _plot_sweep_grid(figures_dir / "burst_profile.png", studies, "burst_profile")
-    _plot_sweep_grid(figures_dir / "aperture.png", studies, "aperture")
-    _plot_sweep_grid(figures_dir / "resource_fraction.png", studies, "resource_fraction")
-    plot_scene_comparison(figures_dir / "scene_comparison.png", studies)
-    plot_fr1_vs_fr2(figures_dir / "fr1_vs_fr2.png", studies)
-    plot_crb_gap(figures_dir / "crb_gap.png", studies)
-    plot_representative_cube_slices(figures_dir / "representative_cube_slices.png", studies)
+    for sweep_name in selected_sweep_names:
+        _plot_sweep_grid(figures_dir / f"{sweep_name}.png", studies, sweep_name)
+    if include_scene_comparison:
+        plot_scene_comparison(figures_dir / "scene_comparison.png", studies)
+    if include_fr1_vs_fr2:
+        plot_fr1_vs_fr2(figures_dir / "fr1_vs_fr2.png", studies)
+    if include_crb_gap:
+        plot_crb_gap(figures_dir / "crb_gap.png", studies)
+    if include_representative_cube_slices:
+        plot_representative_cube_slices(figures_dir / "representative_cube_slices.png", studies)

@@ -16,7 +16,7 @@ if str(SRC_DIR) not in sys.path:
 
 from aisle_isac.reporting import write_all_outputs
 from aisle_isac.scenarios import build_study_config
-from aisle_isac.study import METHOD_ORDER, run_study
+from aisle_isac.study import METHOD_ORDER, PUBLIC_SWEEP_NAMES, run_study
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         default="quick",
-        choices=("quick", "paper"),
+        choices=("quick", "submission"),
         help="Runtime profile to use.",
     )
     parser.add_argument(
@@ -90,7 +90,17 @@ def main() -> None:
             studies.append(run_study(cfg, show_progress=True, max_workers=max_workers, suite=args.suite))
 
     output_root = REPO_ROOT / "results" / args.profile
-    write_all_outputs(studies, output_root, clean_outputs=args.clean_outputs)
+    include_fr1_vs_fr2 = len(anchors) > 1
+    write_all_outputs(
+        studies,
+        output_root,
+        clean_outputs=args.clean_outputs,
+        sweep_names=PUBLIC_SWEEP_NAMES,
+        include_scene_comparison=True,
+        include_fr1_vs_fr2=include_fr1_vs_fr2,
+        include_crb_gap=True,
+        include_representative_cube_slices=True,
+    )
     total_runtime_s = time.perf_counter() - total_start_time
 
     print("Private-5G Angle-Range-Doppler Study")
@@ -104,33 +114,18 @@ def main() -> None:
     print(f"Total runtime: {total_runtime_s:.1f} s")
     print(f"Output root: {output_root}")
     print("Generated CSVs:")
-    for filename in (
-        "range_separation.csv",
-        "velocity_separation.csv",
-        "angle_separation.csv",
-        "absolute_range.csv",
-        "burst_profile.csv",
-        "aperture.csv",
-        "resource_fraction.csv",
-        "scene_comparison.csv",
-        "fr1_vs_fr2.csv",
-        "crb_gap.csv",
-    ):
+    csv_filenames = [f"{sweep_name}.csv" for sweep_name in PUBLIC_SWEEP_NAMES]
+    csv_filenames.extend(["scene_comparison.csv", "crb_gap.csv"])
+    if include_fr1_vs_fr2:
+        csv_filenames.append("fr1_vs_fr2.csv")
+    for filename in csv_filenames:
         print(f"- {output_root / 'data' / filename}")
     print("Generated figures:")
-    for filename in (
-        "range_separation.png",
-        "velocity_separation.png",
-        "angle_separation.png",
-        "absolute_range.png",
-        "burst_profile.png",
-        "aperture.png",
-        "resource_fraction.png",
-        "scene_comparison.png",
-        "fr1_vs_fr2.png",
-        "crb_gap.png",
-        "representative_cube_slices.png",
-    ):
+    figure_filenames = [f"{sweep_name}.png" for sweep_name in PUBLIC_SWEEP_NAMES]
+    figure_filenames.extend(["scene_comparison.png", "crb_gap.png", "representative_cube_slices.png"])
+    if include_fr1_vs_fr2:
+        figure_filenames.append("fr1_vs_fr2.png")
+    for filename in figure_filenames:
         print(f"- {output_root / 'figures' / filename}")
 
     first_study = studies[0]

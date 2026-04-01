@@ -32,18 +32,18 @@ def build_runtime_profile(profile_name: str) -> RuntimeProfile:
             music_grid_points=61,
             coarse_candidate_count=4,
         )
-    if profile_name == "paper":
+    if profile_name == "submission":
         return RuntimeProfile(
-            name="paper",
-            n_trials=128,
+            name="submission",
+            n_trials=64,
             n_simulated_subcarriers=96,
-            fft_range_oversample=8,
-            fft_doppler_oversample=8,
-            fft_angle_oversample=8,
-            music_grid_points=121,
-            coarse_candidate_count=6,
+            fft_range_oversample=6,
+            fft_doppler_oversample=6,
+            fft_angle_oversample=6,
+            music_grid_points=81,
+            coarse_candidate_count=4,
         )
-    raise ValueError("profile_name must be either 'quick' or 'paper'")
+    raise ValueError("profile_name must be either 'quick' or 'submission'")
 
 
 def build_waveform_anchor(anchor_name: str) -> WaveformAnchor:
