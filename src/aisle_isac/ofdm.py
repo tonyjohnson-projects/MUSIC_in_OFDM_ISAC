@@ -61,6 +61,18 @@ def fft_range_axis_m(cfg: StudyConfig) -> np.ndarray:
     return range_axis_m[: n_fft // 2]
 
 
+def sparse_unambiguous_range_m(cfg: StudyConfig) -> float:
+    """Return the first unambiguous range interval implied by the sampled tones."""
+
+    sorted_frequencies_hz = np.sort(cfg.frequencies_hz)
+    if sorted_frequencies_hz.size <= 1:
+        return float(fft_range_axis_m(cfg)[-1])
+
+    max_gap_hz = float(np.max(np.diff(sorted_frequencies_hz)))
+    first_interval_m = C_LIGHT_M_PER_S / (2.0 * max(max_gap_hz, 1.0e-12))
+    return min(float(fft_range_axis_m(cfg)[-1]), first_interval_m)
+
+
 def fft_velocity_axis_mps(cfg: StudyConfig) -> np.ndarray:
     """Return the Doppler FFT velocity axis."""
 
@@ -74,4 +86,5 @@ def fft_azimuth_axis_deg(cfg: StudyConfig) -> np.ndarray:
 
     n_fft = cfg.runtime_profile.fft_angle_oversample * cfg.effective_horizontal_positions_m.size
     spatial_sine = 2.0 * np.fft.fftshift(np.fft.fftfreq(n_fft, d=1.0))
-    return np.rad2deg(np.arcsin(np.clip(spatial_sine, -0.999, 0.999)))
+    # Match the steering-vector convention used throughout the MUSIC pipeline.
+    return -np.rad2deg(np.arcsin(np.clip(spatial_sine, -0.999, 0.999)))

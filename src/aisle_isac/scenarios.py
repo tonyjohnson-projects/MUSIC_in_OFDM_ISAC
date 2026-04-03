@@ -1,4 +1,4 @@
-"""Scenario factories for the private-5G angle-range-Doppler study."""
+"""Scenario factories for the communications-limited MUSIC study."""
 
 from __future__ import annotations
 
@@ -129,7 +129,6 @@ def build_scene_class(scene_name: str) -> SceneClass:
             nominal_range_m=24.0,
             nominal_azimuth_center_deg=0.0,
             nominal_center_velocity_mps=1.2,
-            target_coherence=0.25,
             nominal_snr_db=20.0,
             default_range_separation_cells=1.25,
             default_velocity_separation_cells=1.35,
@@ -153,7 +152,6 @@ def build_scene_class(scene_name: str) -> SceneClass:
             nominal_range_m=22.0,
             nominal_azimuth_center_deg=2.0,
             nominal_center_velocity_mps=1.0,
-            target_coherence=0.92,
             nominal_snr_db=16.0,
             default_range_separation_cells=0.85,
             default_velocity_separation_cells=0.90,
@@ -179,7 +177,6 @@ def build_scene_class(scene_name: str) -> SceneClass:
             nominal_range_m=18.0,
             nominal_azimuth_center_deg=10.0,
             nominal_center_velocity_mps=0.5,
-            target_coherence=0.55,
             nominal_snr_db=18.0,
             default_range_separation_cells=1.00,
             default_velocity_separation_cells=1.25,

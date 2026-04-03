@@ -1,4 +1,4 @@
-"""Configuration dataclasses for the private-5G angle-range-Doppler study."""
+"""Configuration dataclasses for the communications-limited MUSIC study."""
 
 from __future__ import annotations
 
@@ -134,7 +134,6 @@ class SceneClass:
     nominal_range_m: float
     nominal_azimuth_center_deg: float
     nominal_center_velocity_mps: float
-    target_coherence: float
     nominal_snr_db: float
     default_range_separation_cells: float
     default_velocity_separation_cells: float

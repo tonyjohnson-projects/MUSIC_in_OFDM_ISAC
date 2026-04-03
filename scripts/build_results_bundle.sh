@@ -6,7 +6,7 @@ PYTHON_BIN="${PYTHON_BIN:-"$ROOT_DIR/.venv/bin/python"}"
 PROFILE="${PROFILE:-submission}"
 SUITE="${SUITE:-headline}"
 ANCHOR="${ANCHOR:-all}"
-SCENE_CLASS="${SCENE_CLASS:-all}"
+SCENE_CLASS="${SCENE_CLASS:-open_aisle}"
 JOBS="${JOBS:-4}"
 TRIALS="${TRIALS:-}"
 CLEAN_OUTPUTS="${CLEAN_OUTPUTS:-1}"
@@ -41,28 +41,30 @@ DATA_DIR="$OUTPUT_ROOT/data"
 FIGURES_DIR="$OUTPUT_ROOT/figures"
 
 required_data=(
+  allocation_family.csv
+  occupied_fraction.csv
+  pilot_fraction.csv
+  fragmentation.csv
   range_separation.csv
   velocity_separation.csv
   angle_separation.csv
-  absolute_range.csv
-  burst_profile.csv
-  aperture.csv
-  scene_comparison.csv
-  fr1_vs_fr2.csv
-  crb_gap.csv
+  nominal_summary.csv
+  runtime_summary.csv
+  failure_modes.csv
+  anchor_comparison.csv
 )
 
 required_figures=(
+  allocation_family.png
+  occupied_fraction.png
+  pilot_fraction.png
+  fragmentation.png
   range_separation.png
   velocity_separation.png
   angle_separation.png
-  absolute_range.png
-  burst_profile.png
-  aperture.png
-  scene_comparison.png
-  fr1_vs_fr2.png
-  crb_gap.png
-  representative_cube_slices.png
+  runtime_summary.png
+  representative_resource_mask.png
+  representative_spectrum.png
 )
 
 for filename in "${required_data[@]}"; do

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aisle-isac"
 version = "0.1.0"
-description = "MUSIC super-resolution in OFDM ISAC: angle-range-Doppler sensing under private-5G waveform constraints"
+description = "Communications-scheduled OFDM ISAC super-resolution on irregular resource grids"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",

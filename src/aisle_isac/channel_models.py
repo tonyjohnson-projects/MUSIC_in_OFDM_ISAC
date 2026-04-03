@@ -1,4 +1,4 @@
-"""Radar-cube generation for the private-5G angle-range-Doppler study."""
+"""Radar-cube generation for the communications-limited MUSIC study."""
 
 from __future__ import annotations
 
@@ -66,27 +66,21 @@ class CubeSnapshot:
         return self.target_only_cube
 
 
-def _unit_modulus_sequence(length: int, rng: np.random.Generator) -> np.ndarray:
-    phases = rng.uniform(0.0, 2.0 * np.pi, size=length)
-    return np.exp(1j * phases)
+def _unit_modulus_scalar(rng: np.random.Generator) -> np.complex128:
+    phase = rng.uniform(0.0, 2.0 * np.pi)
+    return np.complex128(np.exp(1j * phase))
 
 
-def _build_target_sources(cfg: StudyConfig, rng: np.random.Generator) -> np.ndarray:
-    """Create partially coherent source weights without corrupting Doppler phase."""
+def _build_target_reflectivities(cfg: StudyConfig, rng: np.random.Generator) -> np.ndarray:
+    """Return one random unit-modulus reflectivity per mover.
 
-    n_snapshots = cfg.burst_profile.n_snapshots
-    common_source = np.full(n_snapshots, _unit_modulus_sequence(1, rng)[0], dtype=np.complex128)
-    target_sources = np.zeros((cfg.expected_target_count, n_snapshots), dtype=np.complex128)
+    The project studies super-resolution over range, Doppler, and azimuth. To keep
+    those tones physically clean inside one CPI, each mover is modeled with a
+    trial-wise complex reflectivity scalar rather than a per-snapshot random
+    source sequence.
+    """
 
-    for target_idx in range(cfg.expected_target_count):
-        independent_source = np.full(n_snapshots, _unit_modulus_sequence(1, rng)[0], dtype=np.complex128)
-        target_sources[target_idx] = (
-            cfg.scene_class.target_coherence * common_source
-            + np.sqrt(max(0.0, 1.0 - cfg.scene_class.target_coherence**2)) * independent_source
-        )
-
-    rms = np.sqrt(np.mean(np.abs(target_sources) ** 2, axis=1, keepdims=True))
-    return target_sources / np.maximum(rms, 1.0e-12)
+    return np.asarray([_unit_modulus_scalar(rng) for _ in range(cfg.expected_target_count)], dtype=np.complex128)
 
 
 def path_amplitude(range_m: float, amplitude_db: float, wavelength_m: float = 1.0) -> float:
@@ -222,7 +216,7 @@ def calibrated_noise_variance(cfg: StudyConfig) -> float:
             ]
         )
     )
-    sources = _build_target_sources(baseline_cfg, rng)
+    reflectivities = _build_target_reflectivities(baseline_cfg, rng)
 
     target_only_cube = np.zeros(
         (positions_m.size, baseline_cfg.n_subcarriers, baseline_cfg.burst_profile.n_snapshots),
@@ -231,9 +225,10 @@ def calibrated_noise_variance(cfg: StudyConfig) -> float:
     for target_index, target in enumerate(targets):
         spatial = _azimuth_steering(positions_m, baseline_cfg.wavelength_m, target.azimuth_deg)
         spectral = _range_steering(frequencies_hz, target.range_m)
-        temporal = _doppler_steering(times_s, baseline_cfg.wavelength_m, target.velocity_mps) * sources[target_index]
+        temporal = _doppler_steering(times_s, baseline_cfg.wavelength_m, target.velocity_mps)
         target_only_cube += (
             target.path_gain_linear
+            * reflectivities[target_index]
             * spatial[:, np.newaxis, np.newaxis]
             * spectral[np.newaxis, :, np.newaxis]
             * temporal[np.newaxis, np.newaxis, :]
@@ -249,7 +244,7 @@ def simulate_radar_cube(
     params: TrialParameters,
     rng: np.random.Generator,
 ) -> CubeSnapshot:
-    """Generate one noisy private-5G MIMO-OFDM radar cube."""
+    """Generate one noisy waveform-constrained MIMO-OFDM radar cube."""
 
     targets = build_truth_targets(cfg, params)
     nuisance = _build_nuisance(cfg, params)
@@ -267,7 +262,7 @@ def simulate_radar_cube(
     horizontal_positions_m = cfg.effective_horizontal_positions_m
     frequencies_hz = cfg.frequencies_hz
     times_s = cfg.snapshot_times_s
-    target_sources = _build_target_sources(cfg, rng)
+    target_reflectivities = _build_target_reflectivities(cfg, rng)
 
     target_only_cube = np.zeros(
         (horizontal_positions_m.size, cfg.n_subcarriers, cfg.burst_profile.n_snapshots),
@@ -276,9 +271,10 @@ def simulate_radar_cube(
     for target_index, target in enumerate(targets):
         spatial = _azimuth_steering(horizontal_positions_m, cfg.wavelength_m, target.azimuth_deg)
         spectral = _range_steering(frequencies_hz, target.range_m)
-        temporal = _doppler_steering(times_s, cfg.wavelength_m, target.velocity_mps) * target_sources[target_index]
+        temporal = _doppler_steering(times_s, cfg.wavelength_m, target.velocity_mps)
         target_only_cube += (
             target.path_gain_linear
+            * target_reflectivities[target_index]
             * spatial[:, np.newaxis, np.newaxis]
             * spectral[np.newaxis, :, np.newaxis]
             * temporal[np.newaxis, np.newaxis, :]
@@ -291,11 +287,12 @@ def simulate_radar_cube(
         temporal = _doppler_steering(times_s, cfg.wavelength_m, path.velocity_mps)
         template = (cfg.scene_class.static_clutter + cfg.scene_class.multipath)[nuisance_index]
         if template.coherent_with_target_index is not None:
-            temporal = temporal * target_sources[template.coherent_with_target_index]
+            reflectivity = target_reflectivities[template.coherent_with_target_index]
         else:
-            temporal = temporal * _unit_modulus_sequence(cfg.burst_profile.n_snapshots, rng)
+            reflectivity = _unit_modulus_scalar(rng)
         nuisance_cube += (
             path.path_gain_linear
+            * reflectivity
             * spatial[:, np.newaxis, np.newaxis]
             * spectral[np.newaxis, :, np.newaxis]
             * temporal[np.newaxis, np.newaxis, :]

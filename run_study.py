@@ -1,4 +1,4 @@
-"""CLI entrypoint for the private-5G angle-range-Doppler study."""
+"""CLI entrypoint for the communications-limited MUSIC study."""
 
 from __future__ import annotations
 
@@ -14,13 +14,17 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from aisle_isac.reporting import write_all_outputs
+from aisle_isac.scheduled_reporting import write_all_outputs
 from aisle_isac.scenarios import build_study_config
-from aisle_isac.study import METHOD_ORDER, PUBLIC_SWEEP_NAMES, run_study
+from aisle_isac.scheduled_study import (
+    METHOD_ORDER,
+    PUBLIC_SWEEP_NAMES,
+    run_communications_study,
+)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the private-5G angle-range-Doppler study.")
+    parser = argparse.ArgumentParser(description="Run the communications-limited OFDM ISAC MUSIC study.")
     parser.add_argument(
         "--anchor",
         default="all",
@@ -29,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--scene-class",
-        default="all",
+        default="open_aisle",
         choices=("open_aisle", "rack_aisle", "intersection", "all"),
         help="Scene class selection.",
     )
@@ -87,44 +91,52 @@ def main() -> None:
                 suite=args.suite,
                 trial_count_override=args.trials,
             )
-            studies.append(run_study(cfg, show_progress=True, max_workers=max_workers, suite=args.suite))
+            selected_sweeps = PUBLIC_SWEEP_NAMES
+            studies.append(
+                run_communications_study(
+                    cfg,
+                    show_progress=True,
+                    max_workers=max_workers,
+                    suite=args.suite,
+                    sweep_names=selected_sweeps,
+                )
+            )
 
     output_root = REPO_ROOT / "results" / args.profile
-    include_fr1_vs_fr2 = len(anchors) > 1
+    include_anchor_comparison = len(anchors) > 1
+    include_scene_comparison = len(scenes) > 1
     write_all_outputs(
         studies,
         output_root,
         clean_outputs=args.clean_outputs,
         sweep_names=PUBLIC_SWEEP_NAMES,
-        include_scene_comparison=True,
-        include_fr1_vs_fr2=include_fr1_vs_fr2,
-        include_crb_gap=True,
-        include_representative_cube_slices=True,
+        include_scene_comparison=include_scene_comparison,
+        include_anchor_comparison=include_anchor_comparison,
     )
     total_runtime_s = time.perf_counter() - total_start_time
 
-    print("Private-5G Angle-Range-Doppler Study")
-    print("------------------------------------")
+    print("Communications-Limited OFDM ISAC MUSIC Study")
+    print("-------------------------------------------")
     print(f"Profile: {args.profile}")
     print(f"Suite: {args.suite}")
     print(f"Anchors: {', '.join(anchors)}")
     print(f"Scene classes: {', '.join(scenes)}")
-    print(f"Trials per sweep point: {studies[0].nominal_point.method_summaries['fft'].trial_count}")
+    print(f"Trials per sweep point: {studies[0].nominal_point.method_summaries['fft_masked'].trial_count}")
     print(f"Worker processes: {max_workers}")
     print(f"Total runtime: {total_runtime_s:.1f} s")
     print(f"Output root: {output_root}")
     print("Generated CSVs:")
     csv_filenames = [f"{sweep_name}.csv" for sweep_name in PUBLIC_SWEEP_NAMES]
-    csv_filenames.extend(["scene_comparison.csv", "crb_gap.csv"])
-    if include_fr1_vs_fr2:
-        csv_filenames.append("fr1_vs_fr2.csv")
+    csv_filenames.extend(["nominal_summary.csv", "runtime_summary.csv", "failure_modes.csv"])
+    if include_scene_comparison:
+        csv_filenames.append("scene_comparison.csv")
+    if include_anchor_comparison:
+        csv_filenames.append("anchor_comparison.csv")
     for filename in csv_filenames:
         print(f"- {output_root / 'data' / filename}")
     print("Generated figures:")
     figure_filenames = [f"{sweep_name}.png" for sweep_name in PUBLIC_SWEEP_NAMES]
-    figure_filenames.extend(["scene_comparison.png", "crb_gap.png", "representative_cube_slices.png"])
-    if include_fr1_vs_fr2:
-        figure_filenames.append("fr1_vs_fr2.png")
+    figure_filenames.extend(["runtime_summary.png", "representative_resource_mask.png", "representative_spectrum.png"])
     for filename in figure_filenames:
         print(f"- {output_root / 'figures' / filename}")
 
@@ -138,7 +150,6 @@ def main() -> None:
             f"Pres={summary.joint_resolution_probability:.2f}, "
             f"scene_cost={summary.scene_cost:.3f}, "
             f"uncond_joint_rmse={summary.unconditional_joint_assignment_rmse:.3f}, "
-            f"uncond_rmse_over_crb={summary.unconditional_rmse_over_crb:.3f}, "
             f"total_runtime={summary.total_runtime_s:.4f}s"
         )
 

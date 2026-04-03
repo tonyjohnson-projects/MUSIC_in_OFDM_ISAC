@@ -31,7 +31,7 @@ class MethodTrialMetrics:
     """Per-trial sensing outcomes for one estimator."""
 
     detections: np.ndarray
-    estimated_model_order: int
+    reported_target_count: int
     matched_target_count: int
     assignments: tuple[TrialAssignment, ...]
     joint_detection_success: bool
@@ -80,7 +80,7 @@ class MethodPointSummary:
     scene_cost: float
     false_alarm_probability: float
     miss_probability: float
-    model_order_accuracy: float
+    reported_target_count_accuracy: float
     frontend_runtime_s: float
     incremental_runtime_s: float
     total_runtime_s: float
@@ -171,7 +171,7 @@ def evaluate_trial(
     cfg: StudyConfig,
     truth_targets: tuple[TargetState, ...],
     detections: tuple,
-    estimated_model_order: int,
+    reported_target_count: int,
     noise_variance: float,
     frontend_runtime_s: float,
     incremental_runtime_s: float,
@@ -314,7 +314,7 @@ def evaluate_trial(
     )
     return MethodTrialMetrics(
         detections=detection_array,
-        estimated_model_order=estimated_model_order,
+        reported_target_count=reported_target_count,
         matched_target_count=len(detection_gated_assignments),
         assignments=tuple(assignments),
         joint_detection_success=len(detection_gated_assignments) == len(truth_targets),
@@ -342,7 +342,7 @@ def evaluate_trial(
 
 def summarize_method_metrics(
     metrics: list[MethodTrialMetrics],
-    expected_model_order: int,
+    expected_target_count: int,
 ) -> MethodPointSummary:
     """Aggregate per-trial metrics over one sweep point."""
 
@@ -354,8 +354,8 @@ def summarize_method_metrics(
     resolution_success_count = sum(metric.joint_resolution_success for metric in metrics)
     false_alarm_event_count = sum(metric.any_false_alarm for metric in metrics)
     miss_event_count = sum(metric.any_miss for metric in metrics)
-    model_order_accuracy = float(
-        np.mean([metric.estimated_model_order == expected_model_order for metric in metrics], dtype=float)
+    reported_target_count_accuracy = float(
+        np.mean([metric.reported_target_count == expected_target_count for metric in metrics], dtype=float)
     )
 
     def _aggregate(values: list[float | None]) -> float | None:
@@ -385,7 +385,7 @@ def summarize_method_metrics(
         scene_cost=float(np.mean([metric.scene_cost for metric in metrics])),
         false_alarm_probability=false_alarm_event_count / trial_count,
         miss_probability=miss_event_count / trial_count,
-        model_order_accuracy=model_order_accuracy,
+        reported_target_count_accuracy=reported_target_count_accuracy,
         frontend_runtime_s=float(np.mean([metric.frontend_runtime_s for metric in metrics])),
         incremental_runtime_s=float(np.mean([metric.incremental_runtime_s for metric in metrics])),
         total_runtime_s=float(np.mean([metric.total_runtime_s for metric in metrics])),

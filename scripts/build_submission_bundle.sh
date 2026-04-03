@@ -14,78 +14,54 @@ fi
 
 export ROOT_DIR PYTHON_BIN JOBS TRIALS CLEAN_OUTPUTS
 
-"$PYTHON_BIN" - <<'PY'
-from __future__ import annotations
-
-import os
-import sys
-from pathlib import Path
-
-root_dir = Path(os.environ["ROOT_DIR"])
-sys.path.insert(0, str(root_dir / "src"))
-
-from aisle_isac.reporting import write_all_outputs
-from aisle_isac.scenarios import build_study_config
-from aisle_isac.study import SUBMISSION_SWEEP_NAMES, run_study
-
-trial_override = os.environ["TRIALS"].strip()
-jobs = int(os.environ["JOBS"])
-clean_outputs = os.environ["CLEAN_OUTPUTS"] == "1"
-
-studies = []
-for scene_name in ("open_aisle", "rack_aisle"):
-    cfg = build_study_config(
-        "fr1",
-        scene_name,
-        "submission",
-        suite="headline",
-        trial_count_override=int(trial_override) if trial_override else None,
-    )
-    studies.append(
-        run_study(
-            cfg,
-            show_progress=True,
-            max_workers=jobs,
-            suite="headline",
-            sweep_names=SUBMISSION_SWEEP_NAMES,
-        )
-    )
-
-write_all_outputs(
-    studies,
-    root_dir / "results" / "submission",
-    clean_outputs=clean_outputs,
-    sweep_names=SUBMISSION_SWEEP_NAMES,
-    include_scene_comparison=True,
-    include_fr1_vs_fr2=False,
-    include_crb_gap=True,
-    include_representative_cube_slices=True,
+cmd=(
+  "$PYTHON_BIN"
+  "$ROOT_DIR/run_study.py"
+  --profile submission
+  --suite headline
+  --anchor fr1
+  --scene-class open_aisle
+  --jobs "$JOBS"
 )
-PY
+
+if [[ -n "$TRIALS" ]]; then
+  cmd+=(--trials "$TRIALS")
+fi
+
+if [[ "$CLEAN_OUTPUTS" == "1" ]]; then
+  cmd+=(--clean-outputs)
+fi
+
+"${cmd[@]}"
 
 OUTPUT_ROOT="$ROOT_DIR/results/submission"
 DATA_DIR="$OUTPUT_ROOT/data"
 FIGURES_DIR="$OUTPUT_ROOT/figures"
 
 required_data=(
+  allocation_family.csv
+  occupied_fraction.csv
+  pilot_fraction.csv
+  fragmentation.csv
   range_separation.csv
   velocity_separation.csv
   angle_separation.csv
-  burst_profile.csv
-  aperture.csv
-  scene_comparison.csv
-  crb_gap.csv
+  nominal_summary.csv
+  runtime_summary.csv
+  failure_modes.csv
 )
 
 required_figures=(
+  allocation_family.png
+  occupied_fraction.png
+  pilot_fraction.png
+  fragmentation.png
   range_separation.png
   velocity_separation.png
   angle_separation.png
-  burst_profile.png
-  aperture.png
-  scene_comparison.png
-  crb_gap.png
-  representative_cube_slices.png
+  runtime_summary.png
+  representative_resource_mask.png
+  representative_spectrum.png
 )
 
 for filename in "${required_data[@]}"; do
@@ -117,8 +93,8 @@ manifest_path="$OUTPUT_ROOT/build_manifest.txt"
   echo "profile=submission"
   echo "suite=headline"
   echo "anchor=fr1"
-  echo "scenes=open_aisle,rack_aisle"
-  echo "sweeps=range_separation,velocity_separation,angle_separation,burst_profile,aperture"
+  echo "scenes=open_aisle"
+  echo "sweeps=allocation_family,occupied_fraction,pilot_fraction,fragmentation,range_separation,velocity_separation,angle_separation"
   echo "jobs=$JOBS"
   echo "trials=${TRIALS:-default}"
   echo "python_bin=$PYTHON_BIN"
