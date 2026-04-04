@@ -1,0 +1,183 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  pdftitle={Submission Assessment of MUSIC for Waveform-Limited OFDM ISAC},
+  pdfauthor={Tony Johnson}
+}
+
+\title{Submission Assessment of MUSIC for Waveform-Limited OFDM ISAC}
+\author{Project Snapshot for the Single-Student MSEE Final Project}
+\date{April 3, 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Executive Summary}
+
+The remaining repo-side gaps are now closed:
+\begin{itemize}
+  \item the baseline was strengthened with local FFT refinement,
+  \item the study exports per-trial CSV evidence,
+  \item a \texttt{pilot\_only} diagnostic was added,
+  \item and a full 64-trial FR1 submission bundle was generated.
+\end{itemize}
+
+Those fixes materially changed the answer.
+
+The repository no longer supports the broad thesis that MUSIC is generally useful for waveform-limited OFDM ISAC. The strongest defensible claim is now:
+\begin{quote}
+Against a fair masked FFT baseline, MUSIC is strongly regime-specific. It is clearly useful in the \texttt{intersection} scene, not useful in nominal \texttt{open\_aisle}, collapses in nominal \texttt{rack\_aisle}, and provides no useful nominal performance at all under \texttt{pilot\_only} sensing.
+\end{quote}
+
+That is still a worthwhile MSEE result, but it is a \textbf{negative / conditional result}, not a broad positive proof of MUSIC.
+
+\section{What the Submission Evidence Shows}
+
+Table~\ref{tab:nominal} summarizes the saved FR1 submission nominal results using 64 trials per point and the current fairer FFT baseline.
+
+\begin{table}[H]
+\centering
+\caption{FR1 submission nominal results (64 trials/point).}
+\label{tab:nominal}
+\begin{tabular}{llccc}
+\toprule
+Scene & Method & $P_{\mathrm{det}}$ & $P_{\mathrm{joint}}$ & 95\% CI for $P_{\mathrm{joint}}$ \\
+\midrule
+Open Aisle & FFT + refine & 0.828 & 0.719 & [0.599, 0.814] \\
+Open Aisle & MUSIC + FBSS & 0.672 & 0.563 & [0.441, 0.677] \\
+Intersection & FFT + refine & 0.266 & 0.156 & [0.087, 0.264] \\
+Intersection & MUSIC + FBSS & 0.844 & 0.703 & [0.582, 0.801] \\
+Rack Aisle & FFT + refine & 0.047 & 0.031 & [0.009, 0.107] \\
+Rack Aisle & MUSIC + FBSS & 0.000 & 0.000 & [0.000, 0.057] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The qualitative story is now clear:
+\begin{itemize}
+  \item \texttt{open\_aisle}: the stronger FFT baseline beats MUSIC.
+  \item \texttt{intersection}: MUSIC beats FFT by a large margin.
+  \item \texttt{rack\_aisle}: both methods are poor and MUSIC fully collapses.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../results/submission/figures_from_csv/nominal_summary_from_csv.png}
+\caption{Nominal submission summary across the three FR1 scenes.}
+\label{fig:nominal-summary}
+\end{figure}
+
+\section{Pilot-Only Diagnostic}
+
+The added \texttt{pilot\_only} diagnostic closes an important realism gap. It asks what happens when the estimator only knows pilot REs instead of the full occupied resource grid.
+
+The answer, for the current nominal fragmented-PRB study point, is severe:
+\begin{itemize}
+  \item FFT joint resolution: 0.000 in all three scenes
+  \item MUSIC joint resolution: 0.000 in all three scenes
+\end{itemize}
+
+So the repo no longer supports a practical ``communications waveform sensing works with pilot-only knowledge'' story. The active results are best understood as a known-symbol self-sensing study plus a \texttt{pilot\_only} failure diagnostic.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../results/submission/figures_from_csv/pilot_only_nominal_from_csv.png}
+\caption{Nominal known-symbols versus pilot-only comparison. The pilot-only path collapses for both methods.}
+\label{fig:pilot-only}
+\end{figure}
+
+\section{Where MUSIC Still Helps}
+
+MUSIC is not globally dead in the saved submission data. The usefulness-window analysis still shows real gain regions, but they are much narrower than the earlier quick-study snapshot suggested.
+
+Using the current threshold of a 0.10 absolute improvement over FFT on the headline sweep metric:
+\begin{itemize}
+  \item \texttt{open\_aisle}: 1 useful point out of 37
+  \item \texttt{intersection}: 20 useful points out of 37
+  \item \texttt{rack\_aisle}: 12 useful points out of 37
+\end{itemize}
+
+The sweep pattern is informative:
+\begin{itemize}
+  \item \texttt{intersection}: MUSIC helps broadly in allocation, occupied-fraction, fragmentation, bandwidth-span, slow-time-span, and range-separation sweeps.
+  \item \texttt{open\_aisle}: MUSIC is almost never meaningfully better after the FFT baseline is refined.
+  \item \texttt{rack\_aisle}: usefulness appears only in easier separation sweeps, not in the nominal cluttered point.
+\end{itemize}
+
+That means the project still supports a regime-map contribution:
+\begin{quote}
+MUSIC can outperform a refined masked FFT baseline, but only in specific scene/support regimes; it is not a robust default winner for waveform-limited OFDM ISAC.
+\end{quote}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{../results/submission/figures_from_csv/usefulness_overview_from_csv.png}
+\caption{Fraction of sweep points where MUSIC exceeds FFT by at least 0.10 on the active headline metric.}
+\label{fig:usefulness}
+\end{figure}
+
+\section{What the Closed Gaps Changed}
+
+The original optimistic framing was weakened mainly by three changes:
+
+\subsection*{1. The baseline is now fairer}
+
+The new FFT path gets local matched-filter refinement. Once that asymmetry was removed, nominal \texttt{open\_aisle} flipped from a strong MUSIC win to an FFT win. This is a major result: some of the earlier apparent MUSIC benefit was baseline weakness, not necessarily superior physics.
+
+\subsection*{2. The statistics are now real}
+
+The project now has a full 64-trial submission bundle under \texttt{results/submission}. The current thesis claim no longer depends on quick-profile anecdotes.
+
+\subsection*{3. The transmitter-knowledge diagnostic is harsher}
+
+The \texttt{pilot\_only} diagnostic shows that both methods collapse at the nominal fragmented-PRB point when full occupied-grid symbol knowledge is removed. That substantially weakens any practical ISAC-receiver interpretation of the current estimator results.
+
+\section{What the Repo Now Proves}
+
+The repo does prove several worthwhile things:
+\begin{itemize}
+  \item MUSIC's usefulness is genuinely scene- and support-dependent.
+  \item A stronger FFT baseline can erase apparent MUSIC gains in cleaner scenes.
+  \item MUSIC still has a real win region in the \texttt{intersection} scene and in several support/separation sweeps.
+  \item \texttt{pilot\_only} nominal sensing is insufficient for either method in the current setup.
+  \item Extending FBSS beyond the spatial covariance does not rescue the hard cases.
+\end{itemize}
+
+The repo does \textbf{not} prove:
+\begin{itemize}
+  \item that MUSIC is broadly better for waveform-limited OFDM ISAC,
+  \item that the method is practical without strong symbol knowledge,
+  \item or that a true joint 3D MUSIC solution has been demonstrated.
+\end{itemize}
+
+\section{Scope Limits That Still Remain}
+
+These are now scope limits rather than unfinished gaps:
+\begin{itemize}
+  \item The active MUSIC estimator is staged, not true joint 3D MUSIC.
+  \item The main study is still a fixed two-target simulation.
+  \item The project remains simulation-only.
+  \item The \texttt{pilot\_only} path is a diagnostic, not a complete unknown-data sensing receiver.
+\end{itemize}
+
+\section{Bottom-Line Assessment}
+
+Closing the remaining gaps made the project more defensible, but also less flattering.
+
+The current repository supports a coherent MSEE thesis only if it is framed as:
+\begin{quote}
+MUSIC is not a generally superior super-resolution solution for waveform-limited OFDM ISAC; instead, its benefit is highly regime-specific, it survives clearly in some geometries such as the current \texttt{intersection} case, and it disappears under stronger baselines, harsher clutter, or reduced transmitter knowledge.
+\end{quote}
+
+That is a valid and honest final-project result. It is not a broad pro-MUSIC thesis anymore, but it is a defensible study of where MUSIC helps, where it does not, and how easily the claim can collapse when the comparison is made fairer.
+
+\end{document}
