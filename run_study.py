@@ -19,6 +19,7 @@ from aisle_isac.scenarios import build_study_config
 from aisle_isac.scheduled_study import (
     METHOD_ORDER,
     PUBLIC_SWEEP_NAMES,
+    SUBMISSION_SWEEP_NAMES,
     run_communications_study,
 )
 
@@ -78,10 +79,11 @@ def main() -> None:
 
     anchors = ("fr1", "fr2") if args.anchor == "all" else (args.anchor,)
     scenes = ("open_aisle", "rack_aisle", "intersection") if args.scene_class == "all" else (args.scene_class,)
-    max_workers = args.jobs if args.jobs is not None else max(1, min(4, os.cpu_count() or 1))
+    max_workers = args.jobs if args.jobs is not None else max(1, os.cpu_count() or 1)
 
     studies = []
     total_start_time = time.perf_counter()
+    active_sweeps = SUBMISSION_SWEEP_NAMES if args.profile == "submission" else PUBLIC_SWEEP_NAMES
     for anchor_name in anchors:
         for scene_name in scenes:
             cfg = build_study_config(
@@ -91,14 +93,13 @@ def main() -> None:
                 suite=args.suite,
                 trial_count_override=args.trials,
             )
-            selected_sweeps = PUBLIC_SWEEP_NAMES
             studies.append(
                 run_communications_study(
                     cfg,
                     show_progress=True,
                     max_workers=max_workers,
                     suite=args.suite,
-                    sweep_names=selected_sweeps,
+                    sweep_names=active_sweeps,
                 )
             )
 
@@ -109,7 +110,7 @@ def main() -> None:
         studies,
         output_root,
         clean_outputs=args.clean_outputs,
-        sweep_names=PUBLIC_SWEEP_NAMES,
+        sweep_names=active_sweeps,
         include_scene_comparison=include_scene_comparison,
         include_anchor_comparison=include_anchor_comparison,
     )
@@ -126,8 +127,24 @@ def main() -> None:
     print(f"Total runtime: {total_runtime_s:.1f} s")
     print(f"Output root: {output_root}")
     print("Generated CSVs:")
-    csv_filenames = [f"{sweep_name}.csv" for sweep_name in PUBLIC_SWEEP_NAMES]
-    csv_filenames.extend(["nominal_summary.csv", "runtime_summary.csv", "failure_modes.csv"])
+    csv_filenames = [f"{sweep_name}.csv" for sweep_name in active_sweeps]
+    csv_filenames.extend(
+        [
+            "all_sweep_results.csv",
+            "trial_level_results.csv",
+            "nominal_summary.csv",
+            "pilot_only_nominal_summary.csv",
+            "runtime_summary.csv",
+            "failure_modes.csv",
+            "usefulness_windows.csv",
+            "fbss_ablation_results.csv",
+            "representative_resource_mask.csv",
+            "representative_scene_geometry.csv",
+            "representative_range_doppler.csv",
+            "representative_music_spectra.csv",
+            "representative_fbss_ablation_spectra.csv",
+        ]
+    )
     if include_scene_comparison:
         csv_filenames.append("scene_comparison.csv")
     if include_anchor_comparison:
@@ -135,10 +152,11 @@ def main() -> None:
     for filename in csv_filenames:
         print(f"- {output_root / 'data' / filename}")
     print("Generated figures:")
-    figure_filenames = [f"{sweep_name}.png" for sweep_name in PUBLIC_SWEEP_NAMES]
+    figure_filenames = [f"{sweep_name}.png" for sweep_name in active_sweeps]
     figure_filenames.extend(["runtime_summary.png", "representative_resource_mask.png", "representative_spectrum.png"])
     for filename in figure_filenames:
         print(f"- {output_root / 'figures' / filename}")
+    print(f"CSV-driven plotting script: {REPO_ROOT / 'scripts' / 'plot_results_from_csv.py'}")
 
     first_study = studies[0]
     print()
@@ -148,7 +166,9 @@ def main() -> None:
         print(
             f"- {method_name}: Pdet={summary.joint_detection_probability:.2f}, "
             f"Pres={summary.joint_resolution_probability:.2f}, "
-            f"scene_cost={summary.scene_cost:.3f}, "
+            f"Prange={summary.range_resolution_probability:.2f}, "
+            f"Pvel={summary.velocity_resolution_probability:.2f}, "
+            f"Pangle={summary.angle_resolution_probability:.2f}, "
             f"uncond_joint_rmse={summary.unconditional_joint_assignment_rmse:.3f}, "
             f"total_runtime={summary.total_runtime_s:.4f}s"
         )

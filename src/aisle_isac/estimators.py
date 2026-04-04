@@ -20,6 +20,8 @@ from aisle_isac.ofdm import (
     sparse_unambiguous_range_m,
 )
 
+FBSS_CONTIGUOUS_SUPPORT_FRACTION = 0.5
+
 
 @dataclass(frozen=True)
 class Detection:
@@ -75,6 +77,7 @@ class MethodEstimate:
     label: str
     detections: tuple[Detection, ...]
     reported_target_count: int
+    estimated_model_order: int | None
     frontend_runtime_s: float
     incremental_runtime_s: float
     total_runtime_s: float
@@ -86,6 +89,32 @@ def covariance_matrix(data_matrix: np.ndarray) -> np.ndarray:
     data_matrix = np.asarray(data_matrix, dtype=np.complex128)
     snapshot_count = max(1, data_matrix.shape[1])
     return np.einsum("ik,jk->ij", data_matrix, data_matrix.conj(), optimize=True) / snapshot_count
+
+
+def _fbss_subarray_len(n_sensors: int, fraction: float) -> int | None:
+    if fraction <= 0.0 or n_sensors < 3:
+        return None
+    return max(3, min(n_sensors, int(round(fraction * n_sensors))))
+
+
+def _longest_contiguous_run(mask: np.ndarray) -> tuple[int, int] | None:
+    indices = np.flatnonzero(np.asarray(mask, dtype=bool))
+    if indices.size == 0:
+        return None
+
+    best_start = current_start = int(indices[0])
+    best_stop = current_stop = int(indices[0]) + 1
+    for index in indices[1:].tolist():
+        if index == current_stop:
+            current_stop += 1
+            continue
+        if current_stop - current_start > best_stop - best_start:
+            best_start, best_stop = current_start, current_stop
+        current_start = int(index)
+        current_stop = int(index) + 1
+    if current_stop - current_start > best_stop - best_start:
+        best_start, best_stop = current_start, current_stop
+    return best_start, best_stop
 
 
 def fbss_covariance(data_matrix: np.ndarray, subarray_len: int) -> np.ndarray:
@@ -103,6 +132,80 @@ def fbss_covariance(data_matrix: np.ndarray, subarray_len: int) -> np.ndarray:
     forward /= n_subarrays
     backward = exchange_matrix @ forward.conj() @ exchange_matrix
     return 0.5 * (forward + backward)
+
+
+def _range_music_covariance(
+    cfg: StudyConfig,
+    beamformed: np.ndarray,
+    known_mask: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    if known_mask is None:
+        return covariance_matrix(beamformed), cfg.frequencies_hz, False
+
+    active_symbol_indices = np.flatnonzero(np.any(known_mask, axis=0))
+    if active_symbol_indices.size < 2:
+        return covariance_matrix(beamformed), cfg.frequencies_hz, False
+
+    common_frequency_mask = np.all(known_mask[:, active_symbol_indices], axis=1)
+    contiguous_run = _longest_contiguous_run(common_frequency_mask)
+    if contiguous_run is None:
+        return covariance_matrix(beamformed), cfg.frequencies_hz, False
+
+    run_start, run_stop = contiguous_run
+    run_len = run_stop - run_start
+    common_frequency_count = int(np.count_nonzero(common_frequency_mask))
+    subarray_len = _fbss_subarray_len(run_len, cfg.music_range_fbss_fraction)
+    if (
+        subarray_len is None
+        or common_frequency_count <= 0
+        or run_len / common_frequency_count < FBSS_CONTIGUOUS_SUPPORT_FRACTION
+    ):
+        return covariance_matrix(beamformed), cfg.frequencies_hz, False
+
+    stable_symbol_mask = np.all(known_mask[run_start:run_stop, :], axis=0)
+    stable_symbol_indices = np.flatnonzero(stable_symbol_mask)
+    if stable_symbol_indices.size < 2:
+        return covariance_matrix(beamformed), cfg.frequencies_hz, False
+
+    support_matrix = beamformed[run_start:run_stop][:, stable_symbol_indices]
+    return fbss_covariance(support_matrix, subarray_len), cfg.frequencies_hz[run_start : run_start + subarray_len], True
+
+
+def _doppler_music_covariance(
+    cfg: StudyConfig,
+    doppler_signal: np.ndarray,
+    known_mask: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    if known_mask is None:
+        return covariance_matrix(doppler_signal), cfg.snapshot_times_s, False
+
+    active_frequency_indices = np.flatnonzero(np.any(known_mask, axis=1))
+    if active_frequency_indices.size < 2:
+        return covariance_matrix(doppler_signal), cfg.snapshot_times_s, False
+
+    common_symbol_mask = np.all(known_mask[active_frequency_indices, :], axis=0)
+    contiguous_run = _longest_contiguous_run(common_symbol_mask)
+    if contiguous_run is None:
+        return covariance_matrix(doppler_signal), cfg.snapshot_times_s, False
+
+    run_start, run_stop = contiguous_run
+    run_len = run_stop - run_start
+    common_symbol_count = int(np.count_nonzero(common_symbol_mask))
+    subarray_len = _fbss_subarray_len(run_len, cfg.music_doppler_fbss_fraction)
+    if (
+        subarray_len is None
+        or common_symbol_count <= 0
+        or run_len / common_symbol_count < FBSS_CONTIGUOUS_SUPPORT_FRACTION
+    ):
+        return covariance_matrix(doppler_signal), cfg.snapshot_times_s, False
+
+    stable_frequency_mask = np.all(known_mask[:, run_start:run_stop], axis=1)
+    stable_frequency_indices = np.flatnonzero(stable_frequency_mask)
+    if stable_frequency_indices.size < 2:
+        return covariance_matrix(doppler_signal), cfg.snapshot_times_s, False
+
+    support_matrix = doppler_signal[run_start:run_stop][:, stable_frequency_indices]
+    return fbss_covariance(support_matrix, subarray_len), cfg.snapshot_times_s[run_start : run_start + subarray_len], True
 
 
 def estimate_model_order_mdl(
@@ -375,6 +478,11 @@ def _max_output_detections(cfg: StudyConfig) -> int:
     return max(1, cfg.expected_target_count)
 
 
+def _estimate_music_model_order(covariance: np.ndarray, snapshot_count: int) -> int:
+    max_sources = min(max(1, covariance.shape[0] - 1), 6)
+    return estimate_model_order_mdl(covariance, snapshot_count, max_sources)
+
+
 def _build_detection(
     cfg: StudyConfig,
     radar_cube: np.ndarray,
@@ -480,6 +588,42 @@ def _refine_detection_local(
     )
 
 
+def refine_detection_set_local(
+    cfg: StudyConfig,
+    radar_cube: np.ndarray,
+    coarse_candidates: tuple[Detection, ...],
+    search_bounds: SearchBounds,
+    *,
+    candidate_pool_size: int | None = None,
+    range_upper_bound_m: float | None = None,
+) -> tuple[Detection, ...]:
+    """Refine a candidate set with local matched-filter coordinate descent and NMS."""
+
+    if not coarse_candidates:
+        return ()
+
+    selected_candidates = coarse_candidates
+    if candidate_pool_size is not None:
+        selected_candidates = coarse_candidates[: max(1, candidate_pool_size)]
+
+    refined_candidates = tuple(
+        _refine_detection_local(
+            cfg,
+            radar_cube,
+            coarse_detection=candidate,
+            search_bounds=search_bounds,
+            range_upper_bound_m=range_upper_bound_m,
+        )
+        for candidate in selected_candidates
+    )
+    merged: list[Detection] = []
+    nms_radius_sq = cfg.detection_nms_radius_cells * cfg.detection_nms_radius_cells
+    for candidate in sorted(refined_candidates, key=lambda item: item.score, reverse=True):
+        if all(_normalized_distance_cells_sq(cfg, candidate, existing) >= nms_radius_sq for existing in merged):
+            merged.append(candidate)
+    return tuple(merged[: _max_output_detections(cfg)])
+
+
 def _run_fft_estimator(
     cfg: StudyConfig,
     frontend: FrontendArtifacts,
@@ -489,6 +633,7 @@ def _run_fft_estimator(
         label="Angle-Range-Doppler FFT",
         detections=detections,
         reported_target_count=len(detections),
+        estimated_model_order=None,
         frontend_runtime_s=frontend.frontend_runtime_s,
         incremental_runtime_s=0.0,
         total_runtime_s=frontend.frontend_runtime_s,
@@ -504,12 +649,14 @@ def _run_staged_music(
     use_fbss: bool,
 ) -> MethodEstimate:
     start_time = time.perf_counter()
+    estimated_model_order = None
     if not coarse_candidates:
         incremental_runtime_s = time.perf_counter() - start_time
         return MethodEstimate(
             label="FFT-Seeded Azimuth MUSIC + FBSS" if use_fbss else "FFT-Seeded Staged Azimuth MUSIC",
             detections=(),
             reported_target_count=0,
+            estimated_model_order=estimated_model_order,
             frontend_runtime_s=frontend_runtime_s,
             incremental_runtime_s=incremental_runtime_s,
             total_runtime_s=frontend_runtime_s + incremental_runtime_s,
@@ -620,6 +767,7 @@ def _run_staged_music(
         label="FFT-Seeded Azimuth MUSIC + FBSS" if use_fbss else "FFT-Seeded Staged Azimuth MUSIC",
         detections=detections,
         reported_target_count=len(detections),
+        estimated_model_order=estimated_model_order,
         frontend_runtime_s=frontend_runtime_s,
         incremental_runtime_s=incremental_runtime_s,
         total_runtime_s=frontend_runtime_s + incremental_runtime_s,
@@ -641,16 +789,17 @@ def _run_full_search_music(
     search_bounds: SearchBounds,
     frontend_runtime_s: float,
     use_fbss: bool,
+    known_mask: np.ndarray | None = None,
 ) -> MethodEstimate:
-    """MUSIC with dense independent grid search (not FFT-seeded).
+    """Staged MUSIC with dense azimuth/range/Doppler grid search (not FFT-seeded).
 
-    This estimator demonstrates true sub-resolution capability by
-    searching the full parameter space with MUSIC pseudospectra
-    rather than refining FFT candidates.
+    This estimator performs a dense azimuth search, then conditional range MUSIC,
+    then conditional Doppler MUSIC, followed by local matched-filter refinement.
+    It is a staged subspace pipeline rather than a true joint 3-D MUSIC search.
     """
 
     start_time = time.perf_counter()
-    label = "Full-Search MUSIC + FBSS" if use_fbss else "Full-Search MUSIC"
+    label = "Staged MUSIC + FBSS" if use_fbss else "Staged MUSIC"
 
     horizontal_positions = cfg.effective_horizontal_positions_m
     global_matrix = radar_cube.reshape(radar_cube.shape[0], -1)
@@ -671,9 +820,11 @@ def _run_full_search_music(
         spatial_cov = covariance_matrix(global_matrix)
         spatial_positions = horizontal_positions
 
+    estimated_model_order = _estimate_music_model_order(spatial_cov, global_matrix.shape[1])
+    spectrum_target_order = max(target_order, estimated_model_order)
     azimuth_spectrum = music_pseudospectrum(
         spatial_cov,
-        n_targets=target_order,
+        n_targets=spectrum_target_order,
         steering_matrix=azimuth_steering_matrix(spatial_positions, azimuth_grid, cfg.wavelength_m),
     )
 
@@ -681,7 +832,10 @@ def _run_full_search_music(
     if az_peak_idx.size == 0:
         az_peak_idx = np.array([int(np.argmax(azimuth_spectrum))])
     az_scores = azimuth_spectrum[az_peak_idx]
-    top_k = min(target_order, az_peak_idx.size)
+    top_k = min(
+        max(target_order * cfg.music_azimuth_peak_factor, target_order + 2, estimated_model_order + 1),
+        az_peak_idx.size,
+    )
     top_az_idx = az_peak_idx[np.argsort(az_scores)[-top_k:]]
     azimuth_candidates = azimuth_grid[top_az_idx]
 
@@ -706,17 +860,17 @@ def _run_full_search_music(
             range_search_upper,
             n_range_grid,
         )
-        range_cov = covariance_matrix(beamformed)
+        range_cov, range_frequencies_hz, _ = _range_music_covariance(cfg, beamformed, known_mask)
         range_spectrum = music_pseudospectrum(
             range_cov,
             n_targets=1,
-            steering_matrix=range_steering_matrix(cfg.frequencies_hz, range_grid),
+            steering_matrix=range_steering_matrix(range_frequencies_hz, range_grid),
         )
         r_peak_idx = _1d_peak_indices(range_spectrum, min_distance=max(1, n_range_grid // 30))
         if r_peak_idx.size == 0:
             r_peak_idx = np.array([int(np.argmax(range_spectrum))])
         r_scores = range_spectrum[r_peak_idx]
-        top_r = min(3, r_peak_idx.size)
+        top_r = min(max(2, cfg.music_range_peak_pool), r_peak_idx.size)
         top_r_idx = r_peak_idx[np.argsort(r_scores)[-top_r:]]
 
         for ri in top_r_idx:
@@ -729,11 +883,15 @@ def _run_full_search_music(
                 cfg.runtime_profile.music_grid_points,
             )
             doppler_signal = (beamformed * range_weights.conj()[:, np.newaxis]).T
-            doppler_cov = covariance_matrix(doppler_signal)
+            doppler_cov, doppler_times_s, _ = _doppler_music_covariance(
+                cfg,
+                doppler_signal,
+                known_mask,
+            )
             doppler_spectrum = music_pseudospectrum(
                 doppler_cov,
                 n_targets=1,
-                steering_matrix=doppler_steering_matrix(cfg.snapshot_times_s, doppler_grid, cfg.wavelength_m),
+                steering_matrix=doppler_steering_matrix(doppler_times_s, doppler_grid, cfg.wavelength_m),
             )
             v_mps = float(doppler_grid[int(np.argmax(doppler_spectrum))])
 
@@ -765,6 +923,7 @@ def _run_full_search_music(
         label=label,
         detections=detections,
         reported_target_count=len(detections),
+        estimated_model_order=estimated_model_order,
         frontend_runtime_s=frontend_runtime_s,
         incremental_runtime_s=incremental_runtime_s,
         total_runtime_s=frontend_runtime_s + incremental_runtime_s,

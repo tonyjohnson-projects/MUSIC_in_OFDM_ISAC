@@ -81,6 +81,19 @@ class ResourceGridTest(unittest.TestCase):
         self.assertTrue(np.allclose(known_symbols.symbols[resource_grid.pilot_mask], 1.0 + 0.0j))
         self.assertTrue(np.any(known_symbols.symbols[resource_grid.data_mask] != 0.0))
 
+    def test_pilot_only_mode_marks_only_pilots_as_known(self) -> None:
+        resource_grid = build_resource_grid("pilot_plus_data", 48, 8, pilot_subcarrier_period=4, pilot_symbol_period=2)
+        symbol_map = generate_symbol_map(
+            resource_grid,
+            rng=np.random.default_rng(2),
+            modulation_scheme="qpsk",
+            knowledge_mode="pilot_only",
+        )
+
+        self.assertTrue(np.array_equal(symbol_map.known_symbol_mask, resource_grid.pilot_mask))
+        self.assertTrue(np.allclose(symbol_map.symbols[resource_grid.pilot_mask], 1.0 + 0.0j))
+        self.assertTrue(np.any(symbol_map.symbols[resource_grid.data_mask] != 0.0))
+
     def test_masked_observation_zero_fills_unoccupied_re_and_recovers_known_symbols(self) -> None:
         cfg = build_study_config("fr1", "open_aisle", "quick")
         resource_grid = build_resource_grid(

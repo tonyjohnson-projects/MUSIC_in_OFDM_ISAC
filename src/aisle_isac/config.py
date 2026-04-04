@@ -140,6 +140,13 @@ class SceneClass:
     default_angle_separation_cells: float
     second_target_power_offset_db: float
     base_station_height_m: float
+    target_coherence: float
+    center_range_jitter_m: float
+    range_separation_jitter_cells: float
+    velocity_separation_jitter_cells: float
+    angle_separation_jitter_cells: float
+    target_amplitude_jitter_db: float
+    nuisance_gain_jitter_db: float
     static_clutter: tuple[ScattererTemplate, ...]
     multipath: tuple[ScattererTemplate, ...]
 
@@ -183,12 +190,25 @@ class StudyConfig:
     runtime_profile: RuntimeProfile
     output_config: OutputConfig
     sweep_suite: str
+    evidence_profile_name: str
     expected_target_count: int = 2
     fbss_fraction: float = 0.67
     detection_nms_radius_cells: float = 0.9
     detector_threshold_scale: float = 7.5
     detector_backfill_pool_size: int = 128
     resolution_cell_fraction: float = 0.35
+    target_coherence: float = 0.0
+    source_temporal_correlation: float = 0.985
+    center_range_jitter_m: float = 0.0
+    range_separation_jitter_cells: float = 0.0
+    velocity_separation_jitter_cells: float = 0.0
+    angle_separation_jitter_cells: float = 0.0
+    target_amplitude_jitter_db: float = 0.0
+    nuisance_gain_jitter_db: float = 0.0
+    music_azimuth_peak_factor: int = 3
+    music_range_peak_pool: int = 4
+    music_range_fbss_fraction: float = 0.67
+    music_doppler_fbss_fraction: float = 0.67
     rng_seed: int = 20_260_331
 
     @cached_property

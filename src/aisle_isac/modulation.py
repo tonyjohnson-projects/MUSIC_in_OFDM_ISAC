@@ -10,7 +10,7 @@ from aisle_isac.resource_grid import ResourceGrid
 
 
 SUPPORTED_MODULATION_SCHEMES = ("qpsk", "16qam")
-SUPPORTED_KNOWLEDGE_MODES = ("known_symbols",)
+SUPPORTED_KNOWLEDGE_MODES = ("known_symbols", "pilot_only")
 
 
 @dataclass(frozen=True)
@@ -55,8 +55,9 @@ def generate_symbol_map(
 ) -> CommunicationSymbolMap:
     """Return the symbol field carried on one resource grid."""
 
-    if knowledge_mode != "known_symbols":
-        raise ValueError("The active thesis path supports only known_symbols sensing")
+    if knowledge_mode not in SUPPORTED_KNOWLEDGE_MODES:
+        supported = ", ".join(SUPPORTED_KNOWLEDGE_MODES)
+        raise ValueError(f"knowledge_mode must be one of {supported}")
 
     symbol_grid = np.zeros(resource_grid.shape, dtype=np.complex128)
     symbol_grid[resource_grid.pilot_mask] = np.complex128(pilot_symbol)
@@ -66,7 +67,10 @@ def generate_symbol_map(
         points = constellation_points(modulation_scheme)
         symbol_grid[resource_grid.data_mask] = rng.choice(points, size=data_positions)
 
-    known_symbol_mask = resource_grid.occupied_mask
+    if knowledge_mode == "known_symbols":
+        known_symbol_mask = resource_grid.occupied_mask
+    else:
+        known_symbol_mask = resource_grid.pilot_mask
 
     return CommunicationSymbolMap(
         modulation_scheme=modulation_scheme,

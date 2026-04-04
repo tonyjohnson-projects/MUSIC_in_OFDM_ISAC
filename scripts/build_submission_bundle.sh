@@ -3,102 +3,49 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-"$ROOT_DIR/.venv/bin/python"}"
-JOBS="${JOBS:-4}"
+DEFAULT_JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+JOBS="${JOBS:-$DEFAULT_JOBS}"
 TRIALS="${TRIALS:-}"
 CLEAN_OUTPUTS="${CLEAN_OUTPUTS:-1}"
+ALLOW_SMOKE_SUBMISSION="${ALLOW_SMOKE_SUBMISSION:-0}"
+SUBMISSION_DEFAULT_TRIALS=64
+SCENE_CLASS="${SCENE_CLASS:-all}"
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
   echo "Python interpreter not found: $PYTHON_BIN" >&2
   exit 1
 fi
 
-export ROOT_DIR PYTHON_BIN JOBS TRIALS CLEAN_OUTPUTS
-
-cmd=(
-  "$PYTHON_BIN"
-  "$ROOT_DIR/run_study.py"
-  --profile submission
-  --suite headline
-  --anchor fr1
-  --scene-class open_aisle
-  --jobs "$JOBS"
-)
-
-if [[ -n "$TRIALS" ]]; then
-  cmd+=(--trials "$TRIALS")
+if [[ -n "$TRIALS" && "$TRIALS" -lt "$SUBMISSION_DEFAULT_TRIALS" && "$ALLOW_SMOKE_SUBMISSION" != "1" ]]; then
+  echo "Submission bundle requires at least $SUBMISSION_DEFAULT_TRIALS trials unless ALLOW_SMOKE_SUBMISSION=1 is set." >&2
+  exit 1
 fi
 
-if [[ "$CLEAN_OUTPUTS" == "1" ]]; then
-  cmd+=(--clean-outputs)
+export PYTHON_BIN
+export PROFILE=submission
+export SUITE=headline
+export ANCHOR=fr1
+export SCENE_CLASS
+export JOBS
+export TRIALS
+export CLEAN_OUTPUTS
+
+"$ROOT_DIR/scripts/build_results_bundle.sh"
+
+manifest_path="$ROOT_DIR/results/submission/build_manifest.txt"
+submission_mode="final"
+if [[ -n "$TRIALS" && "$TRIALS" -lt "$SUBMISSION_DEFAULT_TRIALS" ]]; then
+  submission_mode="smoke_override"
+elif [[ -n "$TRIALS" && "$TRIALS" -ge "$SUBMISSION_DEFAULT_TRIALS" ]]; then
+  submission_mode="custom_final"
 fi
 
-"${cmd[@]}"
-
-OUTPUT_ROOT="$ROOT_DIR/results/submission"
-DATA_DIR="$OUTPUT_ROOT/data"
-FIGURES_DIR="$OUTPUT_ROOT/figures"
-
-required_data=(
-  allocation_family.csv
-  occupied_fraction.csv
-  pilot_fraction.csv
-  fragmentation.csv
-  range_separation.csv
-  velocity_separation.csv
-  angle_separation.csv
-  nominal_summary.csv
-  runtime_summary.csv
-  failure_modes.csv
-)
-
-required_figures=(
-  allocation_family.png
-  occupied_fraction.png
-  pilot_fraction.png
-  fragmentation.png
-  range_separation.png
-  velocity_separation.png
-  angle_separation.png
-  runtime_summary.png
-  representative_resource_mask.png
-  representative_spectrum.png
-)
-
-for filename in "${required_data[@]}"; do
-  [[ -f "$DATA_DIR/$filename" ]] || { echo "Missing data artifact: $filename" >&2; exit 1; }
-done
-
-for filename in "${required_figures[@]}"; do
-  [[ -f "$FIGURES_DIR/$filename" ]] || { echo "Missing figure artifact: $filename" >&2; exit 1; }
-done
-
-actual_data="$(find "$DATA_DIR" -maxdepth 1 -type f -exec basename {} \; | sort)"
-actual_figures="$(find "$FIGURES_DIR" -maxdepth 1 -type f -exec basename {} \; | sort)"
-expected_data="$(printf '%s\n' "${required_data[@]}" | sort)"
-expected_figures="$(printf '%s\n' "${required_figures[@]}" | sort)"
-
-[[ "$actual_data" == "$expected_data" ]] || {
-  echo "Unexpected data artifact set: $actual_data" >&2
-  exit 1
-}
-[[ "$actual_figures" == "$expected_figures" ]] || {
-  echo "Unexpected figure artifact set: $actual_figures" >&2
-  exit 1
-}
-
-timestamp_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-manifest_path="$OUTPUT_ROOT/build_manifest.txt"
 {
-  echo "timestamp_utc=$timestamp_utc"
-  echo "profile=submission"
-  echo "suite=headline"
-  echo "anchor=fr1"
-  echo "scenes=open_aisle"
-  echo "sweeps=allocation_family,occupied_fraction,pilot_fraction,fragmentation,range_separation,velocity_separation,angle_separation"
-  echo "jobs=$JOBS"
-  echo "trials=${TRIALS:-default}"
-  echo "python_bin=$PYTHON_BIN"
+  echo "submission_bundle=1"
+  echo "submission_trial_floor=$SUBMISSION_DEFAULT_TRIALS"
+  echo "submission_mode=$submission_mode"
+  echo "allow_smoke_submission=$ALLOW_SMOKE_SUBMISSION"
   echo "command=bash scripts/build_submission_bundle.sh"
-} > "$manifest_path"
+} >> "$manifest_path"
 
 echo "Wrote manifest: $manifest_path"

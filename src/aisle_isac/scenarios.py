@@ -135,6 +135,13 @@ def build_scene_class(scene_name: str) -> SceneClass:
             default_angle_separation_cells=1.25,
             second_target_power_offset_db=-1.0,
             base_station_height_m=4.0,
+            target_coherence=0.15,
+            center_range_jitter_m=0.20,
+            range_separation_jitter_cells=0.08,
+            velocity_separation_jitter_cells=0.08,
+            angle_separation_jitter_cells=0.08,
+            target_amplitude_jitter_db=0.40,
+            nuisance_gain_jitter_db=0.75,
             static_clutter=(
                 ScattererTemplate("support_beam", -8.0, -18.0, -20.0),
                 ScattererTemplate("column", 11.0, 14.0, -23.0),
@@ -158,6 +165,13 @@ def build_scene_class(scene_name: str) -> SceneClass:
             default_angle_separation_cells=0.90,
             second_target_power_offset_db=-3.0,
             base_station_height_m=4.5,
+            target_coherence=0.65,
+            center_range_jitter_m=0.25,
+            range_separation_jitter_cells=0.10,
+            velocity_separation_jitter_cells=0.10,
+            angle_separation_jitter_cells=0.10,
+            target_amplitude_jitter_db=0.50,
+            nuisance_gain_jitter_db=1.00,
             static_clutter=(
                 ScattererTemplate("left_rack", -7.5, -24.0, -12.0),
                 ScattererTemplate("right_rack", -7.0, 23.0, -12.5),
@@ -183,6 +197,13 @@ def build_scene_class(scene_name: str) -> SceneClass:
             default_angle_separation_cells=1.55,
             second_target_power_offset_db=1.5,
             base_station_height_m=4.5,
+            target_coherence=0.30,
+            center_range_jitter_m=0.20,
+            range_separation_jitter_cells=0.08,
+            velocity_separation_jitter_cells=0.10,
+            angle_separation_jitter_cells=0.08,
+            target_amplitude_jitter_db=0.45,
+            nuisance_gain_jitter_db=0.90,
             static_clutter=(
                 ScattererTemplate("cross_aisle_wall", 4.0, -28.0, -15.0),
                 ScattererTemplate("forklift_bay", 7.5, 24.0, -17.0),
@@ -210,12 +231,21 @@ def build_study_config(
     runtime_profile = build_runtime_profile(profile_name)
     if trial_count_override is not None:
         runtime_profile = replace(runtime_profile, n_trials=trial_count_override)
+    scene_class = build_scene_class(scene_name)
     return StudyConfig(
         anchor=build_waveform_anchor(anchor_name),
         burst_profile=build_burst_profile(burst_profile_name),
         array_geometry=build_array_geometry(rx_columns=rx_columns),
-        scene_class=build_scene_class(scene_name),
+        scene_class=scene_class,
         runtime_profile=runtime_profile,
         output_config=OutputConfig(root_dir=Path("results") / profile_name),
         sweep_suite=suite,
+        evidence_profile_name="music_waveform_limited_v2",
+        target_coherence=scene_class.target_coherence,
+        center_range_jitter_m=scene_class.center_range_jitter_m,
+        range_separation_jitter_cells=scene_class.range_separation_jitter_cells,
+        velocity_separation_jitter_cells=scene_class.velocity_separation_jitter_cells,
+        angle_separation_jitter_cells=scene_class.angle_separation_jitter_cells,
+        target_amplitude_jitter_db=scene_class.target_amplitude_jitter_db,
+        nuisance_gain_jitter_db=scene_class.nuisance_gain_jitter_db,
     )
