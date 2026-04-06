@@ -116,6 +116,12 @@ expected_figures="$(printf '%s\n' "${required_figures[@]}" | sort)"
 }
 
 timestamp_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+git_commit="unknown"
+git_commit_short="unknown"
+if git -C "$ROOT_DIR" rev-parse HEAD >/dev/null 2>&1; then
+  git_commit="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  git_commit_short="$(git -C "$ROOT_DIR" rev-parse --short HEAD)"
+fi
 manifest_path="$OUTPUT_ROOT/build_manifest.txt"
 submission_mode="non_submission"
 if [[ "$PROFILE" == "submission" ]]; then
@@ -129,6 +135,8 @@ fi
   echo "timestamp_utc=$timestamp_utc"
   echo "schema_version=$SCHEMA_VERSION"
   echo "evidence_profile=$EVIDENCE_PROFILE"
+  echo "git_commit=$git_commit"
+  echo "git_commit_short=$git_commit_short"
   echo "estimator_set=$ESTIMATOR_SET"
   echo "fbss_ablation_set=$FBSS_ABLATION_SET"
   echo "knowledge_modes=known_symbols,pilot_only"

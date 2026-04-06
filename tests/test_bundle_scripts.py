@@ -62,6 +62,8 @@ class BundleScriptsTest(unittest.TestCase):
         self.assertIn("estimator_set=fft_masked,music_masked", manifest_text)
         self.assertIn("fbss_ablation_set=fbss_spatial_only,fbss_spatial_range,fbss_spatial_doppler,fbss_spatial_range_doppler", manifest_text)
         self.assertIn("knowledge_modes=known_symbols,pilot_only", manifest_text)
+        self.assertIn("git_commit=", manifest_text)
+        self.assertIn("git_commit_short=", manifest_text)
         self.assertIn("bandwidth_span", manifest_text)
         self.assertIn("slow_time_span", manifest_text)
         self.assertNotIn("pilot_fraction", manifest_text)
@@ -149,13 +151,14 @@ class BundleScriptsTest(unittest.TestCase):
             check=True,
         )
         figure_dir = REPO_ROOT / "results" / "quick" / "figures_from_csv"
-        self.assertTrue((figure_dir / "nominal_summary_from_csv.png").exists())
-        self.assertTrue((figure_dir / "pilot_only_nominal_from_csv.png").exists())
-        self.assertTrue((figure_dir / "trial_level_joint_rmse_from_csv.png").exists())
-        self.assertTrue((figure_dir / "sweep_bandwidth_span_from_csv.png").exists())
-        self.assertTrue((figure_dir / "range_doppler_fr1_open_aisle.png").exists())
-        self.assertTrue((figure_dir / "music_spectra_fr1_open_aisle.png").exists())
-        self.assertTrue((figure_dir / "fbss_ablation_nominal_from_csv.png").exists())
-        self.assertTrue((figure_dir / "fbss_ablation_bandwidth_span_from_csv.png").exists())
-        self.assertTrue((figure_dir / "fbss_ablation_slow_time_span_from_csv.png").exists())
-        self.assertTrue((figure_dir / "fbss_ablation_spectra_fr1_open_aisle.png").exists())
+        expected_story_figures = {
+            "story_nominal_verdict_from_csv.png",
+            "story_intersection_resolution_from_csv.png",
+            "story_regime_map_from_csv.png",
+            "story_coherence_overlap_from_csv.png",
+            "story_pilot_only_collapse_from_csv.png",
+            "story_trial_delta_from_csv.png",
+        }
+        actual_story_figures = {path.name for path in figure_dir.glob("*.png")}
+        self.assertEqual(actual_story_figures, expected_story_figures)
+        self.assertFalse((figure_dir / "sweep_bandwidth_span_from_csv.png").exists())

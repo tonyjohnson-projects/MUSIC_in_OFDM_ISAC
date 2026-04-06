@@ -45,7 +45,7 @@ fi
   echo "submission_trial_floor=$SUBMISSION_DEFAULT_TRIALS"
   echo "submission_mode=$submission_mode"
   echo "allow_smoke_submission=$ALLOW_SMOKE_SUBMISSION"
-  echo "command=bash scripts/build_submission_bundle.sh"
+  echo "wrapper_command=bash scripts/build_submission_bundle.sh"
 } >> "$manifest_path"
 
 echo "Wrote manifest: $manifest_path"

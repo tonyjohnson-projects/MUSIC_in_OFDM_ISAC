@@ -5,179 +5,694 @@
 \usepackage{float}
 \usepackage{hyperref}
 \usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{tabularx}
+\graphicspath{{../results/submission/figures_from_csv/}{results/submission/figures_from_csv/}}
 
 \hypersetup{
   colorlinks=true,
   linkcolor=blue,
   urlcolor=blue,
-  pdftitle={Submission Assessment of MUSIC for Waveform-Limited OFDM ISAC},
+  pdftitle={When Does MUSIC Help in Waveform-Limited OFDM ISAC? A Regime Study Against a Fair Masked FFT Baseline},
   pdfauthor={Tony Johnson}
 }
 
-\title{Submission Assessment of MUSIC for Waveform-Limited OFDM ISAC}
-\author{Project Snapshot for the Single-Student MSEE Final Project}
-\date{April 3, 2026}
+\newcommand{\pdet}{P_{\mathrm{det}}}
+\newcommand{\pjoint}{P_{\mathrm{joint}}}
+\newcommand{\prange}{P_{\mathrm{range}}}
+\newcommand{\pvel}{P_{\mathrm{vel}}}
+\newcommand{\pangle}{P_{\mathrm{angle}}}
+\newcommand{\fft}{\texttt{fft\_masked}}
+\newcommand{\music}{\texttt{music\_masked}}
+
+\title{When Does MUSIC Help in Waveform-Limited OFDM ISAC?\\A Regime Study Against a Fair Masked FFT Baseline}
+\author{Comprehensive Project Report}
+\date{April 4, 2026}
 
 \begin{document}
 \maketitle
 
-\section*{Executive Summary}
+\begin{abstract}
+This report studies whether MUSIC, combined with forward-backward spatial smoothing (FBSS), remains useful for super-resolution sensing when the sensing waveform is not a dedicated radar waveform but a communications-style OFDM resource grid with missing and irregular support. The application context is 6G integrated sensing and communications (ISAC), where it is attractive to reuse infrastructure, spectrum, and waveforms for both data transport and environmental sensing. The central difficulty is that communications scheduling, fragmented occupancy, limited symbol knowledge, and structured multipath all degrade the covariance structure that subspace methods rely on.
 
-The remaining repo-side gaps are now closed:
+The project compares two headline estimators on the same masked observation: a fair masked FFT baseline with local matched-filter refinement, and a staged masked MUSIC pipeline with spatial FBSS plus support-aware range and Doppler FBSS when valid. The submission-grade evidence bundle is a saved FR1 Monte Carlo study with 64 trials per sweep point, three indoor industrial scene classes, eight public sweep families, nominal summaries, per-trial CSV exports, and representative figures generated from saved CSVs only.
+
+The main conclusion is narrow but defensible. MUSIC is not generically superior to a fair masked FFT baseline in waveform-limited OFDM ISAC. Its benefit is regime-specific: it wins strongly in the nominal intersection scene and in several support-limited and range-separation sweeps, loses in nominal open aisle, collapses in nominal rack aisle, and yields no useful nominal performance under the current pilot-only diagnostic. The paired nominal trial logs strengthen this conclusion: the open-aisle loss and intersection win are statistically supported, while rack aisle is best interpreted as a shared failure region rather than as a meaningful nominal win for either method. What must be framed carefully is the mechanism: the scenes differ in more than target coherence, and the saved trial logs show overlapping empirical coherence across scenes, so the results should be interpreted as a comparison across composite regimes rather than as an isolated coherence study.
+\end{abstract}
+
+\section{Introduction and Motivation}
+
+Integrated sensing and communications is a natural 6G research direction because future infrastructure is expected to share spectrum, aperture, computation, and deployment footprint across both links and sensing tasks \cite{liu2022}. A base station that already transmits a wideband MIMO-OFDM waveform is an obvious candidate sensor. If the communication waveform can support useful range, Doppler, and angle estimation, then the network gains environmental awareness without a separate radar band or separate radar front end.
+
+The challenge is that a communications waveform is not a radar waveform. In a scheduled OFDM grid, only a subset of resource elements may be occupied, pilots may be sparse, data symbols may be unknown to the sensing receiver, and the occupied support may be fragmented across frequency and slow time. These constraints weaken the three ingredients that a classical super-resolution pipeline wants:
 \begin{itemize}
-  \item the baseline was strengthened with local FFT refinement,
-  \item the study exports per-trial CSV evidence,
-  \item a \texttt{pilot\_only} diagnostic was added,
-  \item and a full 64-trial FR1 submission bundle was generated.
+  \item contiguous bandwidth for fine range structure,
+  \item contiguous slow-time aperture for Doppler structure,
+  \item and covariance matrices whose dominant subspaces remain stable in the presence of missing support and coherent nuisance paths.
 \end{itemize}
 
-Those fixes materially changed the answer.
-
-The repository no longer supports the broad thesis that MUSIC is generally useful for waveform-limited OFDM ISAC. The strongest defensible claim is now:
+The project question is therefore not ``does MUSIC work on an ideal radar cube?'' It is:
 \begin{quote}
-Against a fair masked FFT baseline, MUSIC is strongly regime-specific. It is clearly useful in the \texttt{intersection} scene, not useful in nominal \texttt{open\_aisle}, collapses in nominal \texttt{rack\_aisle}, and provides no useful nominal performance at all under \texttt{pilot\_only} sensing.
+Can MUSIC, aided by FBSS, provide practically useful super-resolution gains over a fair FFT baseline when sensing is constrained by a communications-style OFDM resource grid?
 \end{quote}
 
-That is still a worthwhile MSEE result, but it is a \textbf{negative / conditional result}, not a broad positive proof of MUSIC.
+That question is relevant to 6G because it tests whether subspace methods survive realistic waveform limitations rather than only idealized radar assumptions.
 
-\section{What the Submission Evidence Shows}
+\section{Problem Statement and Study Scope}
 
-Table~\ref{tab:nominal} summarizes the saved FR1 submission nominal results using 64 trials per point and the current fairer FFT baseline.
+The project focuses on a narrow but important scope:
+\begin{itemize}
+  \item two-target indoor industrial scenes,
+  \item monostatic OFDM sensing from a private-5G-style FR1 waveform anchor,
+  \item communications-limited resource grids with fragmented occupancy,
+  \item a fair comparison between a masked FFT baseline and a masked staged MUSIC estimator,
+  \item and a submission-grade Monte Carlo bundle saved under \texttt{results/submission}.
+\end{itemize}
+
+The report answers four concrete questions:
+\begin{enumerate}
+  \item What does waveform-limited OFDM sensing do to the super-resolution problem?
+  \item How are MUSIC and FBSS adapted to this masked observation setting?
+  \item What does the saved submission bundle actually show across nominal points and sweeps?
+  \item Which conclusions are robust, and which require careful framing?
+\end{enumerate}
+
+The report does \textbf{not} claim a true joint 3-D MUSIC implementation, an unknown-data receiver, a multi-target tracking system, or a hardware demonstration. It is a simulation study of estimator behavior under waveform and scene constraints.
+
+\subsection{Relation to Prior Work}
+
+This project sits at the intersection of two established research lines. First, recent ISAC literature frames sensing-from-communications-waveforms as a central 6G theme, with OFDM and MIMO-OFDM appearing as natural candidates because they already dominate practical wireless systems \cite{liu2022}. Earlier joint radar-communications work also showed why OFDM is attractive for dual use: the same multicarrier waveform can support communication while enabling delay- and Doppler-sensitive sensing processing on the recovered symbols \cite{sturm2009,sit2011}.
+
+Second, the super-resolution machinery used here comes from classical array processing rather than from new ISAC-specific theory. MUSIC is the canonical subspace method for super-resolution parameter estimation \cite{schmidt1986}, while spatial smoothing and forward-backward spatial smoothing are standard remedies for source coherence and multipath-induced covariance rank loss \cite{shan1985,pillai1989}.
+
+The novelty claim of this report is therefore intentionally narrow. It is not proposing a new waveform, a new FBSS theorem, or a new joint estimator. Instead, it asks whether a staged, support-aware masked MUSIC pipeline still provides value once sensing is forced onto a communications-style OFDM resource grid with fragmented support, limited symbol knowledge, and structured nuisance multipath. The distinction between known-symbol sensing and pilot-limited sensing is also motivated by integrated communication-and-sensing receiver literature that uses pilot structure explicitly rather than assuming every transmitted symbol is known \cite{mousaei2017}. In that context, the report's pilot-only mode should be interpreted as a diagnostic for the current receiver path, not as a general statement about pilot-assisted OFDM sensing.
+
+\section{Signal Model and Mathematical Background}
+
+\subsection{Waveform-Limited OFDM Observation Model}
+
+Let $h$ index the virtual horizontal channel, $k$ the subcarrier, and $n$ the OFDM symbol index. The masked communications-limited observation can be written schematically as
+\begin{equation}
+y_{h,k,n}
+=
+m_{k,n} x_{k,n}
+\left(
+\sum_{p=1}^{P}
+\alpha_p
+a_h(\theta_p)
+e^{-j 2 \pi f_k \tau_p}
+e^{j 2 \pi \nu_p t_n}
+s_p[n]
+\right)
++ w_{h,k,n}.
+\end{equation}
+where
+\begin{itemize}
+  \item $m_{k,n} \in \{0,1\}$ is the resource-support mask,
+  \item $x_{k,n}$ is the transmitted OFDM symbol,
+  \item $\alpha_p$ is the path gain,
+  \item $\theta_p$, $\tau_p$, and $\nu_p$ are azimuth, delay, and Doppler,
+  \item $a_h(\theta_p)$ is the spatial steering term,
+  \item $s_p[n]$ is the slow-time source process for path $p$,
+  \item and $w_{h,k,n}$ is complex receiver noise.
+\end{itemize}
+
+For a radar interpretation, delay and Doppler are converted to range and velocity by
+\begin{equation}
+R = \frac{c \tau}{2},
+\qquad
+v = \frac{\lambda \nu}{2}.
+\end{equation}
+
+If the sensing receiver knows the transmitted symbols on a subset of occupied resource elements, it can de-embed them and form a masked sensing cube
+\begin{equation}
+\tilde{y}_{h,k,n}
+=
+\begin{cases}
+y_{h,k,n} / x_{k,n}, & (k,n) \in \Omega_{\mathrm{known}}, \\
+0, & \text{otherwise}.
+\end{cases}
+\end{equation}
+
+This is the core object used by both headline estimators in the project. Unlike a radar-dedicated cube, it contains structured zeros and irregular support inherited from communications scheduling and symbol knowledge.
+
+\subsection{Why Communications Scheduling Makes Super-Resolution Hard}
+
+Three OFDM limitations matter immediately:
+\begin{enumerate}
+  \item \textbf{Fragmented frequency support.} Missing subcarriers reduce effective bandwidth and disrupt the covariance structure used by both FFT and subspace methods.
+  \item \textbf{Fragmented slow-time support.} Missing OFDM symbols reduce coherent processing interval and Doppler stability.
+  \item \textbf{Limited transmitter knowledge.} If only pilot symbols are known, then the sensing receiver cannot cleanly de-embed data-bearing resource elements without a more complete communication receiver.
+\end{enumerate}
+
+These are exactly the limitations that make the problem relevant to 6G ISAC rather than classical radar.
+
+\subsection{MUSIC and FBSS in This Setting}
+
+MUSIC works by decomposing a covariance matrix into signal and noise subspaces and evaluating a pseudospectrum of the form \cite{schmidt1986}
+\begin{equation}
+P_{\mathrm{MUSIC}}(\phi)
+=
+\frac{1}{\lVert E_n^H a(\phi) \rVert_2^2},
+\end{equation}
+where $E_n$ is the estimated noise subspace and $a(\phi)$ is the steering vector for the parameter of interest. Peaks in this pseudospectrum indicate directions, ranges, or Doppler values consistent with the signal subspace.
+
+The main appeal of MUSIC is that it can resolve targets more finely than FFT bin spacing when the covariance estimate is informative. The main risk is that covariance estimation degrades badly when sources are coherent or when the support is heavily masked.
+
+FBSS addresses source coherence by averaging covariance matrices across overlapping subarrays and applying forward-backward symmetrization \cite{shan1985,pillai1989}. In this project:
+\begin{itemize}
+  \item spatial FBSS is always used in the active MUSIC path,
+  \item range FBSS is used only when the known support contains a sufficiently long contiguous frequency run,
+  \item and Doppler FBSS is used only when the known support contains a sufficiently long contiguous slow-time run.
+\end{itemize}
+
+This is an important point: the estimator is \textbf{support-aware}. It does not assume that every masked OFDM pattern admits a meaningful range or Doppler smoothing aperture.
+
+\subsection{Important Architectural Limitation}
+
+The active MUSIC method is staged rather than truly joint. It performs a dense azimuth search first, then conditioned range MUSIC, then conditioned Doppler MUSIC, and finally a local matched-filter refinement. It is therefore best described as a \emph{staged masked MUSIC pipeline with FBSS}, not as a full joint 3-D MUSIC solver.
+
+\section{Study Design}
+
+\subsection{Submission Bundle Used in This Report}
+
+All quantitative claims in this report come from the saved submission bundle in the repository results tree. No Monte Carlo sweeps are rerun here. Tables and figures are derived from the saved CSV artifacts and the current code path.
+
+The submission bundle used in the report has the following scope:
+\begin{itemize}
+  \item FR1 anchor only,
+  \item 64 trials per sweep point,
+  \item 3 scene classes,
+  \item 8 public sweep families,
+  \item 37 sweep points per scene,
+  \item a nominal point and a pilot-only nominal diagnostic for each scene,
+  \item per-trial CSV export for auditability.
+\end{itemize}
+
+The saved build manifest records the execution command used to generate the bundle, and the bundle-generation path now also records the git commit hash for reproducibility.
+
+\subsection{Waveform, Array, and Nominal Resource Mask}
+
+Table~\ref{tab:waveform-setup} summarizes the active waveform and array configuration for the submission bundle.
 
 \begin{table}[H]
 \centering
-\caption{FR1 submission nominal results (64 trials/point).}
-\label{tab:nominal}
-\begin{tabular}{llccc}
+\small
+\caption{Submission waveform and array configuration (FR1 anchor).}
+\label{tab:waveform-setup}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.7in}p{2.7in}}
 \toprule
-Scene & Method & $P_{\mathrm{det}}$ & $P_{\mathrm{joint}}$ & 95\% CI for $P_{\mathrm{joint}}$ \\
+Parameter & Value \\
 \midrule
-Open Aisle & FFT + refine & 0.828 & 0.719 & [0.599, 0.814] \\
-Open Aisle & MUSIC + FBSS & 0.672 & 0.563 & [0.441, 0.677] \\
-Intersection & FFT + refine & 0.266 & 0.156 & [0.087, 0.264] \\
-Intersection & MUSIC + FBSS & 0.844 & 0.703 & [0.582, 0.801] \\
-Rack Aisle & FFT + refine & 0.047 & 0.031 & [0.009, 0.107] \\
-Rack Aisle & MUSIC + FBSS & 0.000 & 0.000 & [0.000, 0.057] \\
+Carrier frequency & 3.5 GHz \\
+Occupied bandwidth & 100 MHz \\
+Subcarrier spacing & 30 kHz \\
+Physical OFDM subcarriers & 3333 \\
+Simulated subcarriers used in the study & 96 \\
+Snapshots in the balanced CPI & 16 \\
+Coherent processing interval & 8 ms \\
+Effective horizontal channels & 16 \\
+Nominal range resolution & 1.499 m \\
+Nominal velocity resolution & 5.353 m/s \\
+Nominal azimuth resolution & 6.769 deg \\
+Nominal allocation family & Fragmented scheduled PRB \\
+Nominal occupied fraction & 0.500 \\
+Nominal pilot fraction within occupied REs & 0.0625 \\
+Nominal contiguous bandwidth-span fraction & 1.000 \\
+Nominal slow-time-span fraction & 1.000 \\
+Nominal fragmentation index & 0.0316 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The qualitative story is now clear:
-\begin{itemize}
-  \item \texttt{open\_aisle}: the stronger FFT baseline beats MUSIC.
-  \item \texttt{intersection}: MUSIC beats FFT by a large margin.
-  \item \texttt{rack\_aisle}: both methods are poor and MUSIC fully collapses.
-\end{itemize}
+The nominal fragmented PRB grid is important. Even though only half of the resource elements are occupied, the occupied support spans the full simulated bandwidth and the full slow-time interval. This means the nominal point is not a ``small bandwidth'' or ``short CPI'' point; it is a \emph{fragmented full-span} point.
+
+\subsection{Scenes and What Actually Separates Them}
+
+Table~\ref{tab:scene-setup} summarizes the nominal scene settings. These scenes are not pure coherence cases. They differ in target pair, SNR, axis separations, target power imbalance, clutter count, multipath count, and configured target coherence.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Nominal scene settings for the submission study.}
+\label{tab:scene-setup}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.1in}>{\raggedright\arraybackslash}p{0.9in}cccccc}
+\toprule
+Scene & Target pair & SNR (dB) & $\Delta R$ (m) & $\Delta v$ (m/s) & $\Delta \theta$ (deg) & Power offset (dB) & Static / multipath \\
+\midrule
+Open aisle & AMR + AMR & 20 & 1.874 & 7.227 & 8.461 & $-1.0$ & 2 / 1 \\
+Intersection & AMR + Forklift & 18 & 1.499 & 6.692 & 10.491 & $+1.5$ & 3 / 1 \\
+Rack aisle & AMR + AMR & 16 & 1.274 & 4.818 & 6.092 & $-3.0$ & 3 / 2 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+The configured target coherence values in the scenario generator are 0.15 for open aisle, 0.30 for intersection, and 0.65 for rack aisle. However, the saved trial logs show strongly overlapping \emph{empirical} finite-snapshot coherence across scenes. In the submission bundle, the mean empirical target coherence is approximately 0.78 for open aisle, 0.77 for intersection, and 0.87 for rack aisle.
+
+Figure~\ref{fig:coherence-overlap} makes this overlap explicit by comparing the configured scene coherence with the empirical coherence realized in the nominal paired trial logs. Open aisle and intersection overlap heavily, and even rack aisle retains substantial overlap with both.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{../results/submission/figures_from_csv/nominal_summary_from_csv.png}
-\caption{Nominal submission summary across the three FR1 scenes.}
-\label{fig:nominal-summary}
+\includegraphics[width=\textwidth]{story_coherence_overlap_from_csv.png}
+\caption{Configured versus empirical target coherence in the saved nominal paired trial logs. The empirical finite-snapshot coherence distributions overlap strongly across scenes, so the scene comparison should be interpreted as a composite-regime comparison rather than a clean coherence sweep.}
+\label{fig:coherence-overlap}
 \end{figure}
 
-\section{Pilot-Only Diagnostic}
+This does \textbf{not} invalidate the measured estimator comparison. It does narrow the mechanism claim. The scenes should be interpreted as three composite operating regimes, not as a clean single-factor coherence sweep.
 
-The added \texttt{pilot\_only} diagnostic closes an important realism gap. It asks what happens when the estimator only knows pilot REs instead of the full occupied resource grid.
+\subsection{Public Sweep Families}
 
-The answer, for the current nominal fragmented-PRB study point, is severe:
+The submission bundle evaluates eight public sweep families:
 \begin{itemize}
-  \item FFT joint resolution: 0.000 in all three scenes
-  \item MUSIC joint resolution: 0.000 in all three scenes
+  \item allocation family,
+  \item occupied fraction,
+  \item fragmentation,
+  \item bandwidth span,
+  \item slow-time span,
+  \item range separation,
+  \item velocity separation,
+  \item angle separation.
 \end{itemize}
 
-So the repo no longer supports a practical ``communications waveform sensing works with pilot-only knowledge'' story. The active results are best understood as a known-symbol self-sensing study plus a \texttt{pilot\_only} failure diagnostic.
+The separation sweeps are axis-isolated by design: when one axis is swept, the other two are held comfortably separated. This matters for interpretation later because a nominal scene win does not imply a win on every axis-isolated sweep.
+
+\section{Estimators and Evaluation Pipeline}
+
+\subsection{Headline Comparison}
+
+The report centers on two headline methods:
+\begin{enumerate}
+  \item \textbf{\fft:} a weighted masked FFT front end followed by local matched-filter refinement.
+  \item \textbf{\music:} a staged masked MUSIC estimator with spatial FBSS, support-aware range and Doppler FBSS when valid, and local matched-filter refinement.
+\end{enumerate}
+
+This is a fair comparison in the sense that both methods use the same de-embedded masked observation, and the FFT baseline is not left as a raw coarse detector. The addition of local refinement to the FFT path is one of the reasons the final result is more balanced than the earlier optimistic picture.
+
+\subsection{Pilot-Only Diagnostic}
+
+The study also includes a pilot-only diagnostic. In this mode, only pilot REs are treated as known and all non-pilot data REs are zero-filled in the recovered sensing cube. This is therefore a \emph{receiver diagnostic} for the current processing path, not a full unknown-data sensing receiver.
+
+\subsection{FBSS Ablation}
+
+To understand how much the result depends on support-aware smoothing, the bundle also logs four MUSIC variants:
+\begin{itemize}
+  \item spatial FBSS only,
+  \item spatial + range FBSS,
+  \item spatial + Doppler FBSS,
+  \item spatial + range + Doppler FBSS.
+\end{itemize}
+
+\subsection{Metrics}
+
+Each trial produces detections, assignments to truth targets, and summary metrics. The main probabilities are:
+\begin{itemize}
+  \item $\pdet$: both movers are detected within a detection gate,
+  \item $\pjoint$: both movers are assigned within the joint resolution gate,
+  \item $\prange$, $\pvel$, and $\pangle$: analogous axis-specific resolution probabilities.
+\end{itemize}
+
+The trial evaluator uses normalized errors measured in range, velocity, and azimuth resolution cells. A joint-resolution success requires both movers to lie within the detection gate and within 0.35 of the nominal cell size on all three axes.
+
+This 0.35-cell threshold is the active evaluation default from the current study configuration. Appendix~\ref{app:gate-sensitivity} checks that the nominal headline verdict is stable under nearby thresholds using the saved per-trial assignments, without rerunning Monte Carlo.
+
+The report also uses:
+\begin{itemize}
+  \item false-alarm probability,
+  \item miss probability,
+  \item unconditional joint-assignment RMSE,
+  \item paired nominal trial deltas between FFT and MUSIC.
+\end{itemize}
+
+For summary proportions, the bundle reports 95\% Wilson confidence intervals. Because the same random seed spawn is used for both headline methods at a given sweep point, paired trial comparisons are meaningful.
+
+\section{Results}
+
+\subsection{Nominal Submission Verdict}
+
+Table~\ref{tab:nominal-results} summarizes the nominal FR1 submission point across the three scene classes.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Nominal FR1 submission results, 64 trials per scene.}
+\label{tab:nominal-results}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}lcccc}
+\toprule
+Scene & Method & $\pdet$ & $\pjoint$ & False alarm & Miss \\
+\midrule
+Open aisle & FFT + local refinement & 0.828 & 0.719 & 0.156 & 0.172 \\
+Open aisle & Staged MUSIC + FBSS & 0.672 & 0.563 & 0.328 & 0.328 \\
+Intersection & FFT + local refinement & 0.266 & 0.156 & 0.719 & 0.734 \\
+Intersection & Staged MUSIC + FBSS & 0.844 & 0.703 & 0.156 & 0.156 \\
+Rack aisle & FFT + local refinement & 0.047 & 0.031 & 0.938 & 0.953 \\
+Rack aisle & Staged MUSIC + FBSS & 0.000 & 0.000 & 1.000 & 1.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:nominal-verdict} shows the same nominal result with Wilson intervals.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{../results/submission/figures_from_csv/pilot_only_nominal_from_csv.png}
-\caption{Nominal known-symbols versus pilot-only comparison. The pilot-only path collapses for both methods.}
+\includegraphics[width=\textwidth]{story_nominal_verdict_from_csv.png}
+\caption{Nominal scene verdict from the saved submission bundle. The headline claim supported by the data is narrow: MUSIC wins only in the nominal intersection scene, loses in nominal open aisle, and does not produce a useful nominal result in rack aisle.}
+\label{fig:nominal-verdict}
+\end{figure}
+
+The nominal interpretation is straightforward:
+\begin{itemize}
+  \item \textbf{Open aisle:} the fair FFT baseline outperforms MUSIC.
+  \item \textbf{Intersection:} MUSIC outperforms FFT by a large margin.
+  \item \textbf{Rack aisle:} both methods are poor, and MUSIC collapses completely at the nominal point.
+\end{itemize}
+
+This is already enough to reject any broad claim that MUSIC is generically better in the waveform-limited setting.
+
+\subsection{Paired Nominal Trial Evidence}
+
+The nominal averages are not being driven by one or two extreme outliers. Table~\ref{tab:paired-nominal} summarizes paired nominal trial outcomes from the saved trial logs.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Paired nominal joint-resolution outcomes across 64 shared trials per scene.}
+\label{tab:paired-nominal}
+\begin{tabular}{lcccc}
+\toprule
+Scene & FFT only & MUSIC only & Both succeed & Both fail \\
+\midrule
+Open aisle & 15 & 5 & 31 & 13 \\
+Intersection & 0 & 35 & 10 & 19 \\
+Rack aisle & 2 & 0 & 0 & 62 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Figure~\ref{fig:trial-delta} shows the same comparison in continuous form using paired unconditional joint-assignment RMSE deltas. Positive values favor MUSIC.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{story_trial_delta_from_csv.png}
+\caption{Paired nominal trial deltas from the saved submission bundle. The intersection advantage is broad, open-aisle losses are systematic, and rack aisle is mostly a shared failure region with a small number of mixed outcomes.}
+\label{fig:trial-delta}
+\end{figure}
+
+The paired-trial picture strengthens the nominal conclusion:
+\begin{itemize}
+  \item in open aisle, only 25\% of trials favor MUSIC on the RMSE delta;
+  \item in intersection, about 70\% of trials favor MUSIC;
+  \item in rack aisle, the comparison is dominated by shared failure rather than by a meaningful win region for either method.
+\end{itemize}
+
+\subsection{Paired Statistical Support}
+
+Because the nominal headline methods share the same trial spawn keys, the submission bundle supports exact paired tests at the nominal point. Table~\ref{tab:paired-significance} reports two such checks from the saved trial logs: an exact McNemar test on paired joint-resolution success and a two-sided exact sign test on paired unconditional joint-assignment RMSE deltas. Positive RMSE delta means MUSIC is better.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Paired nominal significance checks from the saved 64-trial submission bundle.}
+\label{tab:paired-significance}
+\begin{tabular}{lcccc}
+\toprule
+Scene & McNemar $p$ & RMSE sign-test $p$ & Mean RMSE delta & Interpretation \\
+\midrule
+Open aisle & 0.041 & $7.7 \times 10^{-5}$ & $-0.125$ & FFT advantage supported \\
+Intersection & $5.8 \times 10^{-11}$ & $2.6 \times 10^{-4}$ & $+0.459$ & MUSIC advantage supported \\
+Rack aisle & 0.500 & 0.791 & $-0.005$ & No clear nominal winner \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These tests do not change the story, but they make it more defensible. The nominal open-aisle loss and nominal intersection win are not just visually separated averages; they remain supported under paired nominal tests. Rack aisle does not support a stronger claim than ``both methods mostly fail here.''
+
+\subsection{Representative Positive Case}
+
+Figure~\ref{fig:intersection-case} shows one deterministic representative trial from the nominal intersection scene.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{story_intersection_resolution_from_csv.png}
+\caption{Representative deterministic trial from the nominal intersection scene. This figure is illustrative rather than distributional: it shows the failure mode that appears repeatedly in the saved bundle, namely FFT duplicating the stronger mover while staged MUSIC resolves both movers.}
+\label{fig:intersection-case}
+\end{figure}
+
+The representative geometry makes the nominal intersection win easier to interpret. The two truth movers differ in target type and strength, the azimuth split is the widest of the three scenes, and the clutter geometry produces a case in which the FFT baseline tends to duplicate the stronger mover instead of separating both movers. In the representative trial, FFT places both detections near the faster mover, while MUSIC places one detection near each truth target.
+
+This does not by itself prove the nominal conclusion; the paired-trial and summary statistics do that. The value of the representative figure is explanatory: it shows a concrete positive regime rather than only reporting aggregate numbers.
+
+\subsection{Representative Negative Cases}
+
+The saved paired trial logs also support deterministic negative examples, which matter because they show that the project is not relying on a single favorable illustration. Table~\ref{tab:negative-cases} summarizes two nominal paired trials taken directly from the saved \texttt{trial\_level\_results.csv} file.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Representative negative nominal trials from the saved paired trial logs.}
+\label{tab:negative-cases}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.0in}cp{2.1in}p{2.1in}}
+\toprule
+Scene & Spawn key & FFT outcome & MUSIC outcome \\
+\midrule
+Open aisle & 3 & Both movers are assigned within the joint gate. The refined FFT detections remain close to both truth movers. & One mover is assigned correctly, but the second detection jumps to a distant spurious target at roughly 16~m and $-19.8^\circ$, so joint success is lost. \\
+Rack aisle & 0 & Joint failure. One detection is near the first mover, but the second is pulled far enough off the pair that both truth assignments fail the joint gate. & Joint failure. One mover is again recovered locally, while the second detection is diverted to a distant false target; this is a shared-failure clutter regime rather than a clean nominal win for either method. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+These negative cases fit the aggregate picture. Open aisle contains real paired trials where FFT refinement is already sufficient and staged MUSIC overcommits to a spurious alternative, while rack aisle is dominated by hard cluttered trials in which neither method maintains two reliable joint assignments.
+
+\subsection{Regime Map Across Sweeps}
+
+The project becomes more interesting when it is interpreted as a regime map rather than as a single nominal verdict. Figure~\ref{fig:regime-map} summarizes the saved sweep families.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{story_regime_map_from_csv.png}
+\caption{Two-panel regime map from the saved submission bundle. Support-limited sweeps (allocation, occupancy, fragmentation, bandwidth, slow time) are separated from axis-isolated separation sweeps because they use different headline metrics. Cell color shows the mean MUSIC-minus-FFT delta within that sweep family, while the text shows the number of strong-win points with delta at least $+0.10$.}
+\label{fig:regime-map}
+\end{figure}
+
+Three sweep-level patterns matter:
+\begin{enumerate}
+  \item \textbf{Open aisle:} MUSIC has no strong-win points at all in the 22 support-limited sweep points, and only one strong-win point in the 15 axis-isolated separation points. After FFT refinement, this is mostly an FFT-favorable regime.
+  \item \textbf{Intersection:} MUSIC wins broadly in the support-limited sweeps, with strong positive cells in allocation, occupancy, fragmentation, bandwidth, and slow-time span. Its axis-specific gain is concentrated in range separation rather than in velocity or angle separation.
+  \item \textbf{Rack aisle:} MUSIC does not help in the 22 support-limited sweep points and does not rescue the nominal point. Its positive cells are concentrated in easier separation sweeps, especially range and velocity separation and, more weakly, at the widest angle splits.
+\end{enumerate}
+
+The split regime map is the most important high-level result of the project. It says that MUSIC is neither universally useful nor universally useless under waveform limitation. Instead, its gains cluster in specific scene and support regimes, and the support-limited and axis-isolated sweep families must be interpreted separately.
+
+\subsection{Pilot-Only Diagnostic}
+
+Figure~\ref{fig:pilot-only} compares nominal known-symbol performance with the pilot-only diagnostic.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{story_pilot_only_collapse_from_csv.png}
+\caption{Pilot-only diagnostic at the nominal fragmented-PRB point. Under the current receiver path, both methods collapse to zero nominal joint-resolution probability when only pilot REs are treated as known.}
 \label{fig:pilot-only}
 \end{figure}
 
-\section{Where MUSIC Still Helps}
-
-MUSIC is not globally dead in the saved submission data. The usefulness-window analysis still shows real gain regions, but they are much narrower than the earlier quick-study snapshot suggested.
-
-Using the current threshold of a 0.10 absolute improvement over FFT on the headline sweep metric:
+The result is severe:
 \begin{itemize}
-  \item \texttt{open\_aisle}: 1 useful point out of 37
-  \item \texttt{intersection}: 20 useful points out of 37
-  \item \texttt{rack\_aisle}: 12 useful points out of 37
+  \item all three scenes yield $\pjoint = 0$ for FFT under pilot-only,
+  \item all three scenes yield $\pjoint = 0$ for MUSIC under pilot-only.
 \end{itemize}
 
-The sweep pattern is informative:
+This is an honest and important negative result. At the same time, it must be framed correctly. At the nominal fragmented-PRB point, only 50\% of REs are occupied and only 6.25\% of those occupied REs are pilots, so the current pilot-only path treats only about 3.125\% of the full grid as known before zero-filling the rest. The project is therefore \textbf{not} proving that pilot-only sensing is fundamentally impossible for OFDM ISAC. It is showing that the current zero-filled de-embedding path has no useful nominal performance under this extremely sparse pilot-only knowledge pattern.
+
+\subsection{FBSS Ablation}
+
+The FBSS ablation is useful mainly because it constrains how the result should be interpreted. In the saved nominal results:
 \begin{itemize}
-  \item \texttt{intersection}: MUSIC helps broadly in allocation, occupied-fraction, fragmentation, bandwidth-span, slow-time-span, and range-separation sweeps.
-  \item \texttt{open\_aisle}: MUSIC is almost never meaningfully better after the FFT baseline is refined.
-  \item \texttt{rack\_aisle}: usefulness appears only in easier separation sweeps, not in the nominal cluttered point.
+  \item adding range and Doppler FBSS beyond spatial-only changes nominal $\pjoint$ by at most 0.016 in open aisle,
+  \item it changes nothing at the nominal point in intersection,
+  \item and it changes nothing at the nominal point in rack aisle.
 \end{itemize}
 
-That means the project still supports a regime-map contribution:
+So the submission outcome is not hiding a large untapped gain from a different FBSS toggle. The active headline behavior is dominated by the broader scene and support regime, not by a fragile ablation choice.
+
+\section{Discussion}
+
+\subsection{What the Project Actually Supports}
+
+The strongest defensible claim supported by the saved bundle is:
 \begin{quote}
-MUSIC can outperform a refined masked FFT baseline, but only in specific scene/support regimes; it is not a robust default winner for waveform-limited OFDM ISAC.
+Against a fair masked FFT baseline, MUSIC is not generically superior for waveform-limited OFDM ISAC. Its gains are regime-specific: clear in the current intersection scene and selected sweeps, absent in nominal open aisle, absent in nominal rack aisle, and absent under the current pilot-only diagnostic.
 \end{quote}
 
-\begin{figure}[H]
+This is a worthwhile result for 6G ISAC because it answers a practically relevant question. If the network must sense using its communications waveform, it is not enough to know that a subspace method can sometimes beat an FFT in clean conditions. One must know \emph{when} the added complexity pays off and when it does not.
+
+\subsection{What Needs Honest Framing}
+
+Two framing points matter.
+
+First, the scenes should not be described as if target coherence were the only or even the dominant controlled difference. They are composite regimes that differ in SNR, nominal separations, target pair, target power imbalance, clutter count, and multipath layout. Because the saved empirical coherence overlaps strongly across scenes in Figure~\ref{fig:coherence-overlap}, the report avoids attributing the scene results to coherence alone.
+
+Second, the pilot-only diagnostic should be presented as a limitation of the current receiver path, not as a universal theorem about pilot-only OFDM sensing.
+
+These points narrow the mechanism claim, but they do \textbf{not} invalidate the empirical comparison. The saved CSVs still support the estimator comparison reported here.
+
+\subsection{Applicability to 6G}
+
+The result is useful to a 6G-oriented audience for three reasons:
+\begin{enumerate}
+  \item It studies sensing from the communication waveform itself rather than from a radar-only waveform.
+  \item It uses support limitations that look like scheduling decisions rather than ideal contiguous radar occupancy.
+  \item It gives a regime map, which is more actionable for system design than a single broad positive claim.
+\end{enumerate}
+
+The practical message is not ``deploy MUSIC everywhere.'' It is closer to:
+\begin{quote}
+MUSIC is a conditional tool for communications-limited sensing. It is worth considering where scene geometry and support conditions create a genuine super-resolution need and where the covariance information remains usable. It is not a default replacement for a strong FFT baseline.
+\end{quote}
+
+The saved runtime summary also sharpens the engineering interpretation. At the nominal FR1 point, staged MUSIC adds only about 0.20--0.24~s of total runtime per sweep point relative to FFT, raising total point runtime from roughly 2.43~s to 2.63~s, or about 8--10\%. Because both methods share the same masked front end and much of the preprocessing cost, the main objection to MUSIC in this study is not runtime overhead alone. The more important question is whether a given operating regime justifies even that modest extra cost.
+
+\subsection{Important Limitations}
+
+Several limitations remain and should be stated plainly:
+\begin{itemize}
+  \item The active estimator is staged, not true joint 3-D MUSIC.
+  \item The study is limited to two movers and a small number of scene templates.
+  \item The scene classes are composite regimes rather than a clean one-factor coherence sweep.
+  \item The bundle is FR1-only for the final submission snapshot.
+  \item The pilot-only path is a harsh diagnostic, not a complete unknown-data receiver.
+  \item The saved nominal summaries show poor MUSIC model-order estimation despite the true target count being two. In the active implementation, the MDL estimate is logged and also used to widen the azimuth hypothesis pool, so model-order mismatch may contribute to some MUSIC failures.
+  \item The study is simulation-only and does not include hardware, channel estimation error, or communication-link feedback constraints.
+\end{itemize}
+
+\section{Conclusion}
+
+This project set out to test whether MUSIC plus FBSS can deliver super-resolution benefits for communications-waveform-limited OFDM ISAC, which is a meaningful question for 6G systems that aim to reuse their communication waveform for sensing.
+
+The answer from the saved submission bundle is nuanced. MUSIC does \emph{not} emerge as a generally superior method once the FFT baseline is made fair and the statistics are taken seriously. Instead, the project finds a regime-specific story:
+\begin{itemize}
+  \item MUSIC can be clearly useful in some composite regimes, especially the nominal intersection scene and several support-limited sweeps.
+  \item A strong masked FFT baseline can match or beat MUSIC in cleaner regimes such as nominal open aisle.
+  \item Hard cluttered regimes such as nominal rack aisle remain failure regions for both methods.
+  \item Under the current pilot-only diagnostic, neither method produces useful nominal performance.
+\end{itemize}
+
+That is not a broad positive proof of MUSIC for OFDM ISAC. It is a more valuable and more defensible result: a careful map of where subspace super-resolution helps, where it does not, and what waveform and scene limitations prevent it from being a default solution. The saved paired nominal tests further tighten that claim by showing that the open-aisle loss and intersection win are statistically supported, whereas rack aisle remains primarily a shared-failure regime.
+
+Future work should focus on three upgrades if the goal is to move toward a stronger 6G sensing claim:
+\begin{enumerate}
+  \item a true joint range-angle-Doppler super-resolution method,
+  \item a receiver path that handles unknown data symbols rather than zero-filling them,
+  \item and controlled factor sweeps, including a cleaner coherence study with scene geometry fixed.
+\end{enumerate}
+
+Within its intended scope, however, the project now stands as an honest and comprehensive estimator-comparison study for waveform-limited OFDM ISAC.
+
+\appendix
+
+\section{Estimator And Evaluation Settings}
+\label{app:settings}
+
+Table~\ref{tab:estimator-settings} collects the most important implementation settings for the active headline comparison. The purpose is not to restate every runtime parameter, but to make the fairness assumptions and evaluation defaults explicit in one place.
+
+\begin{table}[H]
 \centering
-\includegraphics[width=\textwidth]{../results/submission/figures_from_csv/usefulness_overview_from_csv.png}
-\caption{Fraction of sweep points where MUSIC exceeds FFT by at least 0.10 on the active headline metric.}
-\label{fig:usefulness}
-\end{figure}
+\small
+\caption{Key implementation settings for the active headline comparison.}
+\label{tab:estimator-settings}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.3in}p{3.1in}}
+\toprule
+Setting & Active value / interpretation \\
+\midrule
+Expected truth target count & 2 movers per trial \\
+FFT front end & Weighted masked FFT on the same de-embedded known-symbol cube used by MUSIC \\
+FFT candidate extraction & Noise-floor thresholding with scale 7.5 and candidate backfill pool size 128 \\
+Detection non-maximum suppression radius & 0.9 resolution cells \\
+Headline FFT back end & Local matched-filter refinement on coarse FFT candidates \\
+Headline MUSIC architecture & Staged dense azimuth $\rightarrow$ conditioned range $\rightarrow$ conditioned Doppler search, followed by local matched-filter refinement \\
+Spatial FBSS & Always enabled in the active MUSIC path \\
+Range / Doppler FBSS & Enabled only when the support pattern admits a valid smoothing aperture \\
+Model-order handling & MDL-estimated model order is logged and used to widen the azimuth hypothesis pool; final reported target count remains capped by the fixed two-mover study setup \\
+Paired comparison basis & Shared trial spawn keys across headline methods at each sweep point \\
+Joint-resolution gate & Detection gate on all three axes, then 0.35 resolution-cell threshold on each axis \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\section{What the Closed Gaps Changed}
+\section{Nominal Gate Sensitivity}
+\label{app:gate-sensitivity}
 
-The original optimistic framing was weakened mainly by three changes:
+Table~\ref{tab:gate-sensitivity} recomputes nominal joint-resolution probabilities from the saved per-trial assignment logs using several nearby joint-resolution thresholds. No Monte Carlo trials are rerun. The key point is that the nominal verdict is stable: open aisle continues to favor FFT, intersection continues to favor MUSIC, and rack aisle remains a shared-failure region throughout this threshold range.
 
-\subsection*{1. The baseline is now fairer}
+\begin{table}[H]
+\centering
+\small
+\caption{Nominal joint-resolution probability under several joint gate thresholds, recomputed from saved trial assignments only.}
+\label{tab:gate-sensitivity}
+\begin{tabular}{llcccc}
+\toprule
+Scene & Method & 0.25 cell & 0.35 cell & 0.45 cell & 0.50 cell \\
+\midrule
+Open aisle & FFT + local refinement & 0.656 & 0.719 & 0.766 & 0.781 \\
+Open aisle & Staged MUSIC + FBSS & 0.516 & 0.562 & 0.578 & 0.578 \\
+Intersection & FFT + local refinement & 0.125 & 0.156 & 0.219 & 0.219 \\
+Intersection & Staged MUSIC + FBSS & 0.641 & 0.703 & 0.750 & 0.781 \\
+Rack aisle & FFT + local refinement & 0.031 & 0.031 & 0.031 & 0.047 \\
+Rack aisle & Staged MUSIC + FBSS & 0.000 & 0.000 & 0.000 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-The new FFT path gets local matched-filter refinement. Once that asymmetry was removed, nominal \texttt{open\_aisle} flipped from a strong MUSIC win to an FFT win. This is a major result: some of the earlier apparent MUSIC benefit was baseline weakness, not necessarily superior physics.
+\begin{thebibliography}{99}
 
-\subsection*{2. The statistics are now real}
+\bibitem{liu2022}
+F.~Liu, Y.~Cui, C.~Masouros, J.~Xu, T.~X.~Han, Y.~C.~Eldar, and S.~Buzzi,
+``Integrated Sensing and Communications: Toward Dual-Functional Wireless Networks for 6G and Beyond,''
+\emph{IEEE Journal on Selected Areas in Communications},
+vol.~40, no.~6, pp.~1728--1767, Jun.~2022.
+doi: \url{https://doi.org/10.1109/JSAC.2022.3156632}
 
-The project now has a full 64-trial submission bundle under \texttt{results/submission}. The current thesis claim no longer depends on quick-profile anecdotes.
+\bibitem{sturm2009}
+C.~Sturm, T.~Zwick, and W.~Wiesbeck,
+``An OFDM System Concept for Joint Radar and Communications Operations,''
+in \emph{Proc. IEEE 69th Vehicular Technology Conference (VTC Spring)},
+Barcelona, Spain, Apr.~2009, pp.~1--5.
+doi: \url{https://doi.org/10.1109/VETECS.2009.5073387}
 
-\subsection*{3. The transmitter-knowledge diagnostic is harsher}
+\bibitem{sit2011}
+Y.~L.~Sit, C.~Sturm, L.~Reichardt, T.~Zwick, and W.~Wiesbeck,
+``The OFDM Joint Radar-Communication System: An Overview,''
+in \emph{Proc. 3rd International Conference on Advances in Satellite and Space Communications (SPACOMM)},
+Budapest, Hungary, Apr.~2011, pp.~69--74.
 
-The \texttt{pilot\_only} diagnostic shows that both methods collapse at the nominal fragmented-PRB point when full occupied-grid symbol knowledge is removed. That substantially weakens any practical ISAC-receiver interpretation of the current estimator results.
+\bibitem{schmidt1986}
+R.~O.~Schmidt,
+``Multiple Emitter Location and Signal Parameter Estimation,''
+\emph{IEEE Transactions on Antennas and Propagation},
+vol.~34, no.~3, pp.~276--280, Mar.~1986.
 
-\section{What the Repo Now Proves}
+\bibitem{shan1985}
+T.-J.~Shan, M.~Wax, and T.~Kailath,
+``On Spatial Smoothing for Direction-of-Arrival Estimation of Coherent Signals,''
+\emph{IEEE Transactions on Acoustics, Speech, and Signal Processing},
+vol.~33, no.~4, pp.~806--811, Aug.~1985.
+doi: \url{https://doi.org/10.1109/TASSP.1985.1164649}
 
-The repo does prove several worthwhile things:
-\begin{itemize}
-  \item MUSIC's usefulness is genuinely scene- and support-dependent.
-  \item A stronger FFT baseline can erase apparent MUSIC gains in cleaner scenes.
-  \item MUSIC still has a real win region in the \texttt{intersection} scene and in several support/separation sweeps.
-  \item \texttt{pilot\_only} nominal sensing is insufficient for either method in the current setup.
-  \item Extending FBSS beyond the spatial covariance does not rescue the hard cases.
-\end{itemize}
+\bibitem{pillai1989}
+S.~U.~Pillai and B.~H.~Kwon,
+``Forward/Backward Spatial Smoothing Techniques for Coherent Signal Identification,''
+\emph{IEEE Transactions on Acoustics, Speech, and Signal Processing},
+vol.~37, no.~1, pp.~8--15, Jan.~1989.
+doi: \url{https://doi.org/10.1109/29.17496}
 
-The repo does \textbf{not} prove:
-\begin{itemize}
-  \item that MUSIC is broadly better for waveform-limited OFDM ISAC,
-  \item that the method is practical without strong symbol knowledge,
-  \item or that a true joint 3D MUSIC solution has been demonstrated.
-\end{itemize}
+\bibitem{mousaei2017}
+M.~Mousaei, M.~Soltanalian, and B.~Smida,
+``ComSens: Exploiting Pilot Diversity for Pervasive Integration of Communication and Sensing in MIMO-TDD-Frameworks,''
+in \emph{MILCOM 2017 - 2017 IEEE Military Communications Conference},
+Baltimore, MD, USA, Oct.~2017, pp.~617--622.
+doi: \url{https://doi.org/10.1109/MILCOM.2017.8170851}
 
-\section{Scope Limits That Still Remain}
-
-These are now scope limits rather than unfinished gaps:
-\begin{itemize}
-  \item The active MUSIC estimator is staged, not true joint 3D MUSIC.
-  \item The main study is still a fixed two-target simulation.
-  \item The project remains simulation-only.
-  \item The \texttt{pilot\_only} path is a diagnostic, not a complete unknown-data sensing receiver.
-\end{itemize}
-
-\section{Bottom-Line Assessment}
-
-Closing the remaining gaps made the project more defensible, but also less flattering.
-
-The current repository supports a coherent MSEE thesis only if it is framed as:
-\begin{quote}
-MUSIC is not a generally superior super-resolution solution for waveform-limited OFDM ISAC; instead, its benefit is highly regime-specific, it survives clearly in some geometries such as the current \texttt{intersection} case, and it disappears under stronger baselines, harsher clutter, or reduced transmitter knowledge.
-\end{quote}
-
-That is a valid and honest final-project result. It is not a broad pro-MUSIC thesis anymore, but it is a defensible study of where MUSIC helps, where it does not, and how easily the claim can collapse when the comparison is made fairer.
+\end{thebibliography}
 
 \end{document}
