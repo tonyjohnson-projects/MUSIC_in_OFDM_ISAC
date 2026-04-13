@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import concurrent.futures as futures
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import gc
 import os
 
 import numpy as np
@@ -36,6 +37,7 @@ PUBLIC_SWEEP_NAMES = (
     "range_separation",
     "velocity_separation",
     "angle_separation",
+    "nuisance_gain_offset",
 )
 
 SUBMISSION_SWEEP_NAMES = PUBLIC_SWEEP_NAMES
@@ -87,6 +89,10 @@ class SweepPointSpec:
     fragmentation_index: float
     bandwidth_span_fraction: float
     slow_time_span_fraction: float
+    music_model_order_mode: str
+    music_fixed_model_order: int | None
+    enable_fbss_ablation: bool
+    global_nuisance_gain_offset_db: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -146,13 +152,33 @@ class CommunicationsStudyResult:
     scene_label: str
     sweeps: list[SweepResult]
     nominal_point: SweepPointResult
-    pilot_only_nominal_point: SweepPointResult
-    representative_trial: CommunicationsTrialResult
+    pilot_only_nominal_point: SweepPointResult | None
+    representative_trial: CommunicationsTrialResult | None
+
+
+_WORKER_MEMORY_BUDGET_MB = 512  # conservative per-worker estimate for 64-trial runs
 
 
 def _default_max_workers() -> int:
+    """Return a worker count capped by both CPU cores and available memory."""
     cpu_count = os.cpu_count() or 1
-    return max(1, cpu_count)
+    try:
+        import psutil
+        available_mb = psutil.virtual_memory().available / (1024 * 1024)
+    except (ImportError, AttributeError):
+        # Fallback: assume 75% of total physical memory is usable.
+        try:
+            import platform
+            if platform.system() == "Darwin":
+                import subprocess
+                mem_bytes = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"]).strip())
+            else:
+                mem_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+            available_mb = mem_bytes / (1024 * 1024) * 0.75
+        except Exception:
+            available_mb = 8192  # 8 GB fallback
+    memory_workers = max(1, int(available_mb / _WORKER_MEMORY_BUDGET_MB))
+    return max(1, min(cpu_count, memory_workers))
 
 
 def _suite_values(suite: str, coarse: tuple, dense: tuple) -> tuple:
@@ -254,6 +280,10 @@ def _make_point_spec(
         fragmentation_index=allocation_summary.fragmentation_index,
         bandwidth_span_fraction=allocation_summary.contiguous_bandwidth_span_fraction,
         slow_time_span_fraction=allocation_summary.slow_time_span_fraction,
+        music_model_order_mode=cfg.music_model_order_mode,
+        music_fixed_model_order=cfg.music_fixed_model_order,
+        enable_fbss_ablation=cfg.enable_fbss_ablation,
+        global_nuisance_gain_offset_db=cfg.global_nuisance_gain_offset_db,
     )
 
 
@@ -344,6 +374,7 @@ def _trial_row(
 ) -> dict[str, str]:
     scenario = trial_result.masked_observation.snapshot.scenario
     truth_targets = scenario.targets
+    stage_diagnostics = estimate.stage_diagnostics or {}
     return {
         "evidence_profile": cfg.evidence_profile_name,
         "anchor": cfg.anchor.name,
@@ -360,6 +391,16 @@ def _trial_row(
         "knowledge_mode": task.knowledge_mode,
         "modulation_scheme": task.modulation_scheme,
         "estimator_family": estimator_family,
+        "music_model_order_mode": cfg.music_model_order_mode,
+        "music_fixed_model_order": (
+            f"{cfg.music_fixed_model_order:d}" if cfg.music_fixed_model_order is not None else ""
+        ),
+        "fbss_ablation_enabled": f"{int(cfg.enable_fbss_ablation):d}",
+        "music_stage_azimuth_peak_count": stage_diagnostics.get("azimuth_peak_count", ""),
+        "music_stage_azimuth_candidate_count": stage_diagnostics.get("azimuth_candidate_count", ""),
+        "music_stage_azimuth_candidates_deg": stage_diagnostics.get("azimuth_candidates_deg", ""),
+        "music_stage_coarse_candidate_count": stage_diagnostics.get("coarse_stage_candidate_count", ""),
+        "music_stage_coarse_candidates": stage_diagnostics.get("coarse_stage_candidates", ""),
         "method": method_name,
         "method_label": method_label,
         "trial_index": f"{trial_index:d}",
@@ -477,6 +518,11 @@ def _build_sweep_point_specs(
     trial_count: int,
     suite: str,
     sweep_name: str,
+    *,
+    music_model_order_mode: str = "mdl",
+    music_fixed_model_order: int | None = None,
+    enable_fbss_ablation: bool = True,
+    global_nuisance_gain_offset_db: float = 0.0,
 ) -> list[SweepPointSpec]:
     base_cfg = build_study_config(
         anchor_name,
@@ -484,6 +530,10 @@ def _build_sweep_point_specs(
         profile_name,
         trial_count_override=trial_count,
         suite=suite,
+        music_model_order_mode=music_model_order_mode,
+        music_fixed_model_order=music_fixed_model_order,
+        enable_fbss_ablation=enable_fbss_ablation,
+        global_nuisance_gain_offset_db=global_nuisance_gain_offset_db,
     )
     params = nominal_trial_parameters(base_cfg)
 
@@ -665,6 +715,27 @@ def _build_sweep_point_specs(
             for point_index, multiplier in enumerate(multipliers)
         ]
 
+    if sweep_name == "nuisance_gain_offset":
+        offsets_db = _suite_values(suite, (-6.0, -3.0, 0.0, 3.0, 6.0), (-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0))
+        return [
+            _make_point_spec(
+                replace(base_cfg, global_nuisance_gain_offset_db=offset_db),
+                point_index=point_index,
+                sweep_name=sweep_name,
+                parameter_name="nuisance_gain_offset_db",
+                parameter_label="Nuisance Gain Offset (dB)",
+                parameter_value=f"{offset_db:+.1f}",
+                parameter_numeric_value=offset_db,
+                params=params,
+                allocation_family=nominal_family,
+                allocation_label=nominal_label,
+                knowledge_mode=nominal_knowledge,
+                modulation_scheme=nominal_modulation,
+                resource_grid_kwargs=nominal_kwargs,
+            )
+            for point_index, offset_db in enumerate(offsets_db)
+        ]
+
     raise ValueError(f"Unsupported sweep_name: {sweep_name}")
 
 
@@ -752,6 +823,10 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
         rx_columns=task.rx_columns,
         suite=task.suite,
         trial_count_override=task.trial_count,
+        music_model_order_mode=task.music_model_order_mode,
+        music_fixed_model_order=task.music_fixed_model_order,
+        enable_fbss_ablation=task.enable_fbss_ablation,
+        global_nuisance_gain_offset_db=task.global_nuisance_gain_offset_db,
     )
     params = TrialParameters(
         center_range_m=task.center_range_m,
@@ -770,7 +845,7 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
         ]
     )
     trial_metrics: dict[str, list[MethodTrialMetrics]] = {method_name: [] for method_name in METHOD_ORDER}
-    include_fbss_ablation = task.sweep_name in FBSS_ABLATION_SWEEP_NAMES
+    include_fbss_ablation = task.enable_fbss_ablation and task.sweep_name in FBSS_ABLATION_SWEEP_NAMES
     fbss_ablation_trial_metrics = (
         {method_name: [] for method_name in FBSS_ABLATION_ORDER}
         if include_fbss_ablation
@@ -822,6 +897,10 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
                         estimator_family="fbss_ablation",
                     )
                 )
+        # Free large arrays (radar cubes, FFT power cubes) after metrics are extracted.
+        del trial_result
+        if trial_index % 16 == 15:
+            gc.collect()
 
     return SweepPointResult(
         sweep_name=task.sweep_name,
@@ -862,29 +941,8 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
     )
 
 
-def _run_sweep(
-    cfg: StudyConfig,
-    sweep_name: str,
-    *,
-    show_progress: bool,
-    max_workers: int,
-) -> SweepResult:
-    specs = _build_sweep_point_specs(
-        cfg.anchor.name,
-        cfg.scene_class.name,
-        cfg.runtime_profile.name,
-        cfg.runtime_profile.n_trials,
-        cfg.sweep_suite,
-        sweep_name,
-    )
-    if max_workers == 1:
-        points = [_evaluate_point_task(spec) for spec in specs]
-    else:
-        with futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-            points = list(executor.map(_evaluate_point_task, specs))
+def _build_sweep_result(cfg: StudyConfig, sweep_name: str, points: list[SweepPointResult]) -> SweepResult:
     points.sort(key=lambda point: (point.parameter_numeric_value is None, point.parameter_numeric_value, point.parameter_value))
-    if show_progress:
-        print(f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} ({len(points)} points)")
     return SweepResult(
         sweep_name=sweep_name,
         parameter_name=points[0].parameter_name,
@@ -895,6 +953,54 @@ def _run_sweep(
         scene_label=cfg.scene_class.label,
         points=points,
     )
+
+
+def _run_selected_sweeps(
+    cfg: StudyConfig,
+    selected_sweeps: tuple[str, ...],
+    *,
+    show_progress: bool,
+    max_workers: int,
+) -> list[SweepResult]:
+    specs_by_sweep = {
+        sweep_name: _build_sweep_point_specs(
+            cfg.anchor.name,
+            cfg.scene_class.name,
+            cfg.runtime_profile.name,
+            cfg.runtime_profile.n_trials,
+            cfg.sweep_suite,
+            sweep_name,
+            music_model_order_mode=cfg.music_model_order_mode,
+            music_fixed_model_order=cfg.music_fixed_model_order,
+            enable_fbss_ablation=cfg.enable_fbss_ablation,
+            global_nuisance_gain_offset_db=cfg.global_nuisance_gain_offset_db,
+        )
+        for sweep_name in selected_sweeps
+    }
+    points_by_sweep: dict[str, list[SweepPointResult]] = {sweep_name: [] for sweep_name in selected_sweeps}
+
+    if max_workers == 1:
+        for sweep_name in selected_sweeps:
+            for spec in specs_by_sweep[sweep_name]:
+                points_by_sweep[sweep_name].append(_evaluate_point_task(spec))
+            if show_progress:
+                print(f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} ({len(points_by_sweep[sweep_name])} points)")
+    else:
+        completed_counts = {sweep_name: 0 for sweep_name in selected_sweeps}
+        expected_counts = {sweep_name: len(specs) for sweep_name, specs in specs_by_sweep.items()}
+        future_to_sweep: dict[futures.Future, str] = {}
+        with futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            for sweep_name in selected_sweeps:
+                for spec in specs_by_sweep[sweep_name]:
+                    future_to_sweep[executor.submit(_evaluate_point_task, spec)] = sweep_name
+            for future in futures.as_completed(future_to_sweep):
+                sweep_name = future_to_sweep[future]
+                points_by_sweep[sweep_name].append(future.result())
+                completed_counts[sweep_name] += 1
+                if show_progress and completed_counts[sweep_name] == expected_counts[sweep_name]:
+                    print(f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} ({expected_counts[sweep_name]} points)")
+
+    return [_build_sweep_result(cfg, sweep_name, points_by_sweep[sweep_name]) for sweep_name in selected_sweeps]
 
 
 def _nominal_point_spec(cfg: StudyConfig) -> SweepPointSpec:
@@ -924,6 +1030,8 @@ def run_communications_study(
     max_workers: int | None = None,
     suite: str | None = None,
     sweep_names: tuple[str, ...] | None = None,
+    include_pilot_only: bool = True,
+    include_representative: bool = True,
 ) -> CommunicationsStudyResult:
     """Run the allocation-driven communications-scheduled study."""
 
@@ -931,7 +1039,7 @@ def run_communications_study(
         suite = cfg.sweep_suite
     if max_workers is None:
         max_workers = _default_max_workers()
-    selected_sweeps = sweep_names or (SUBMISSION_SWEEP_NAMES if cfg.runtime_profile.name == "submission" else PUBLIC_SWEEP_NAMES)
+    selected_sweeps = sweep_names if sweep_names is not None else (SUBMISSION_SWEEP_NAMES if cfg.runtime_profile.name == "submission" else PUBLIC_SWEEP_NAMES)
 
     study_cfg = build_study_config(
         cfg.anchor.name,
@@ -941,30 +1049,38 @@ def run_communications_study(
         rx_columns=cfg.array_geometry.n_rx_cols,
         suite=suite,
         trial_count_override=cfg.runtime_profile.n_trials,
+        music_model_order_mode=cfg.music_model_order_mode,
+        music_fixed_model_order=cfg.music_fixed_model_order,
+        enable_fbss_ablation=cfg.enable_fbss_ablation,
     )
 
-    sweeps = [
-        _run_sweep(
-            study_cfg,
-            sweep_name,
-            show_progress=show_progress,
-            max_workers=max_workers,
-        )
-        for sweep_name in selected_sweeps
-    ]
+    sweeps = _run_selected_sweeps(
+        study_cfg,
+        selected_sweeps,
+        show_progress=show_progress,
+        max_workers=max_workers,
+    )
     nominal_spec = _nominal_point_spec(study_cfg)
     nominal_point = _evaluate_point_task(nominal_spec)
-    pilot_only_nominal_point = _evaluate_point_task(_pilot_only_nominal_point_spec(study_cfg))
-    representative_trial = simulate_communications_trial(
-        study_cfg,
-        nominal_trial_parameters(study_cfg),
-        nominal_spec.allocation_family,
-        nominal_spec.allocation_label,
-        nominal_spec.knowledge_mode,
-        nominal_spec.modulation_scheme,
-        nominal_spec.resource_grid_kwargs,
-        np.random.default_rng(study_cfg.rng_seed),
-        include_fbss_ablation=True,
+    pilot_only_nominal_point = (
+        _evaluate_point_task(_pilot_only_nominal_point_spec(study_cfg))
+        if include_pilot_only
+        else None
+    )
+    representative_trial = (
+        simulate_communications_trial(
+            study_cfg,
+            nominal_trial_parameters(study_cfg),
+            nominal_spec.allocation_family,
+            nominal_spec.allocation_label,
+            nominal_spec.knowledge_mode,
+            nominal_spec.modulation_scheme,
+            nominal_spec.resource_grid_kwargs,
+            np.random.default_rng(study_cfg.rng_seed),
+            include_fbss_ablation=study_cfg.enable_fbss_ablation,
+        )
+        if include_representative
+        else None
     )
 
     return CommunicationsStudyResult(

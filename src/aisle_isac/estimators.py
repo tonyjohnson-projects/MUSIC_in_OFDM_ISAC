@@ -81,6 +81,7 @@ class MethodEstimate:
     frontend_runtime_s: float
     incremental_runtime_s: float
     total_runtime_s: float
+    stage_diagnostics: dict[str, str] | None = None
 
 
 def covariance_matrix(data_matrix: np.ndarray) -> np.ndarray:
@@ -89,6 +90,16 @@ def covariance_matrix(data_matrix: np.ndarray) -> np.ndarray:
     data_matrix = np.asarray(data_matrix, dtype=np.complex128)
     snapshot_count = max(1, data_matrix.shape[1])
     return np.einsum("ik,jk->ij", data_matrix, data_matrix.conj(), optimize=True) / snapshot_count
+
+
+def _serialize_detection_sequence(detections: tuple[Detection, ...] | list[Detection]) -> str:
+    return "|".join(
+        (
+            f"{detection_index}:"
+            f"{detection.range_m:.3f}:{detection.velocity_mps:.3f}:{detection.azimuth_deg:.3f}:{detection.score:.6e}"
+        )
+        for detection_index, detection in enumerate(detections)
+    )
 
 
 def _fbss_subarray_len(n_sensors: int, fraction: float) -> int | None:
@@ -478,7 +489,15 @@ def _max_output_detections(cfg: StudyConfig) -> int:
     return max(1, cfg.expected_target_count)
 
 
-def _estimate_music_model_order(covariance: np.ndarray, snapshot_count: int) -> int:
+def _estimate_music_model_order(
+    covariance: np.ndarray,
+    snapshot_count: int,
+    cfg: StudyConfig | None = None,
+) -> int:
+    if cfg is not None and cfg.music_model_order_mode == "expected":
+        return max(1, cfg.expected_target_count)
+    if cfg is not None and cfg.music_model_order_mode == "fixed":
+        return int(cfg.music_fixed_model_order or max(1, cfg.expected_target_count))
     max_sources = min(max(1, covariance.shape[0] - 1), 6)
     return estimate_model_order_mdl(covariance, snapshot_count, max_sources)
 
@@ -820,7 +839,7 @@ def _run_full_search_music(
         spatial_cov = covariance_matrix(global_matrix)
         spatial_positions = horizontal_positions
 
-    estimated_model_order = _estimate_music_model_order(spatial_cov, global_matrix.shape[1])
+    estimated_model_order = _estimate_music_model_order(spatial_cov, global_matrix.shape[1], cfg)
     spectrum_target_order = max(target_order, estimated_model_order)
     azimuth_spectrum = music_pseudospectrum(
         spatial_cov,
@@ -843,6 +862,7 @@ def _run_full_search_music(
     range_search_upper = _range_search_upper_m(cfg, search_bounds)
 
     refined_candidates: list[Detection] = []
+    coarse_stage_candidates: list[Detection] = []
     range_grid_step_m = max(0.5 * cfg.range_resolution_m, 0.25)
     n_range_grid = max(
         cfg.runtime_profile.music_grid_points * 2,
@@ -894,21 +914,26 @@ def _run_full_search_music(
                 steering_matrix=doppler_steering_matrix(doppler_times_s, doppler_grid, cfg.wavelength_m),
             )
             v_mps = float(doppler_grid[int(np.argmax(doppler_spectrum))])
-
-            refined_candidates.append(
-                _refine_detection_local(
-                    cfg,
-                    radar_cube,
-                    coarse_detection=Detection(
-                        range_m=r_m,
-                        velocity_mps=v_mps,
-                        azimuth_deg=float(az_deg),
-                        score=0.0,
-                    ),
-                    search_bounds=search_bounds,
-                    range_upper_bound_m=range_search_upper,
-                )
+            coarse_stage_candidate = Detection(
+                range_m=r_m,
+                velocity_mps=v_mps,
+                azimuth_deg=float(az_deg),
+                score=0.0,
             )
+            coarse_stage_candidates.append(coarse_stage_candidate)
+
+            if cfg.skip_local_refinement:
+                refined_candidates.append(coarse_stage_candidate)
+            else:
+                refined_candidates.append(
+                    _refine_detection_local(
+                        cfg,
+                        radar_cube,
+                        coarse_detection=coarse_stage_candidate,
+                        search_bounds=search_bounds,
+                        range_upper_bound_m=range_search_upper,
+                    )
+                )
 
     # --- 3. NMS merge ---
     merged: list[Detection] = []
@@ -927,6 +952,13 @@ def _run_full_search_music(
         frontend_runtime_s=frontend_runtime_s,
         incremental_runtime_s=incremental_runtime_s,
         total_runtime_s=frontend_runtime_s + incremental_runtime_s,
+        stage_diagnostics={
+            "azimuth_peak_count": f"{az_peak_idx.size:d}",
+            "azimuth_candidate_count": f"{azimuth_candidates.size:d}",
+            "azimuth_candidates_deg": "|".join(f"{float(value):.3f}" for value in azimuth_candidates.tolist()),
+            "coarse_stage_candidate_count": f"{len(coarse_stage_candidates):d}",
+            "coarse_stage_candidates": _serialize_detection_sequence(coarse_stage_candidates),
+        },
     )
 
 

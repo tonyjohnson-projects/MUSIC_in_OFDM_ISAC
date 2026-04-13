@@ -205,10 +205,15 @@ class StudyConfig:
     angle_separation_jitter_cells: float = 0.0
     target_amplitude_jitter_db: float = 0.0
     nuisance_gain_jitter_db: float = 0.0
+    global_nuisance_gain_offset_db: float = 0.0
     music_azimuth_peak_factor: int = 3
     music_range_peak_pool: int = 4
     music_range_fbss_fraction: float = 0.67
     music_doppler_fbss_fraction: float = 0.67
+    music_model_order_mode: str = "mdl"
+    music_fixed_model_order: int | None = None
+    enable_fbss_ablation: bool = True
+    skip_local_refinement: bool = False
     rng_seed: int = 20_260_331
 
     @cached_property

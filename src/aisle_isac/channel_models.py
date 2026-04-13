@@ -371,10 +371,15 @@ def simulate_radar_cube(
         realized_params,
         amplitude_offsets_db=trial_jitter.target_amplitude_offsets_db,
     )
+    nuisance_offsets = trial_jitter.nuisance_gain_offsets_db
+    if cfg.global_nuisance_gain_offset_db != 0.0:
+        nuisance_offsets = tuple(
+            offset + cfg.global_nuisance_gain_offset_db for offset in nuisance_offsets
+        )
     nuisance = _build_nuisance(
         cfg,
         realized_params,
-        gain_offsets_db=trial_jitter.nuisance_gain_offsets_db,
+        gain_offsets_db=nuisance_offsets,
     )
 
     source_sequences, source_model = _target_source_sequences(cfg, rng)

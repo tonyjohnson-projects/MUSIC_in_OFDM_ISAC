@@ -101,6 +101,8 @@ class BundleScriptsTest(unittest.TestCase):
         self.assertIn("trial_spawn_key", trial_rows[0])
         self.assertIn("truth_targets", trial_rows[0])
         self.assertIn("detections", trial_rows[0])
+        self.assertIn("music_stage_azimuth_candidate_count", trial_rows[0])
+        self.assertIn("music_stage_coarse_candidates", trial_rows[0])
 
         with (data_dir / "pilot_only_nominal_summary.csv").open("r", encoding="utf-8", newline="") as handle:
             pilot_rows = list(csv.DictReader(handle))
@@ -162,3 +164,57 @@ class BundleScriptsTest(unittest.TestCase):
         actual_story_figures = {path.name for path in figure_dir.glob("*.png")}
         self.assertEqual(actual_story_figures, expected_story_figures)
         self.assertFalse((figure_dir / "sweep_bandwidth_span_from_csv.png").exists())
+
+    def test_run_study_supports_fast_iteration_flags_and_fixed_music_order(self) -> None:
+        output_dir = REPO_ROOT / "results" / "test_fast_iter"
+        subprocess.run(
+            [
+                str(REPO_ROOT / ".venv" / "bin" / "python"),
+                "run_study.py",
+                "--profile",
+                "quick",
+                "--anchor",
+                "fr1",
+                "--scene-class",
+                "open_aisle",
+                "--trials",
+                "1",
+                "--jobs",
+                "1",
+                "--sweeps",
+                "bandwidth_span",
+                "--skip-pilot-only",
+                "--skip-representative",
+                "--disable-fbss-ablation",
+                "--music-fixed-order",
+                "2",
+                "--output-dir",
+                "results/test_fast_iter",
+                "--clean-outputs",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+        data_dir = output_dir / "data"
+        self.assertTrue((data_dir / "bandwidth_span.csv").exists())
+        self.assertTrue((data_dir / "nominal_summary.csv").exists())
+        self.assertTrue((data_dir / "trial_level_results.csv").exists())
+        self.assertFalse((data_dir / "allocation_family.csv").exists())
+        self.assertFalse((data_dir / "pilot_only_nominal_summary.csv").exists())
+        self.assertFalse((data_dir / "fbss_ablation_results.csv").exists())
+        self.assertFalse((data_dir / "representative_resource_mask.csv").exists())
+
+        with (data_dir / "nominal_summary.csv").open("r", encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        music_rows = [row for row in rows if row["method"] == "music_masked"]
+        self.assertEqual(len(music_rows), 1)
+        self.assertEqual(music_rows[0]["mean_estimated_model_order"], "2.000000")
+
+        with (data_dir / "trial_level_results.csv").open("r", encoding="utf-8", newline="") as handle:
+            trial_rows = list(csv.DictReader(handle))
+        self.assertGreater(len(trial_rows), 0)
+        self.assertEqual(sorted({row["sweep_name"] for row in trial_rows}), ["bandwidth_span", "nominal"])
+        self.assertEqual(sorted({row["music_model_order_mode"] for row in trial_rows}), ["fixed"])

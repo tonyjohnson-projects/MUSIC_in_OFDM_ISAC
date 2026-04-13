@@ -47,6 +47,7 @@ class CommunicationsScheduledStudyTest(unittest.TestCase):
                 "range_separation",
                 "velocity_separation",
                 "angle_separation",
+                "nuisance_gain_offset",
             ),
         )
         self.assertEqual(SUBMISSION_SWEEP_NAMES, PUBLIC_SWEEP_NAMES)

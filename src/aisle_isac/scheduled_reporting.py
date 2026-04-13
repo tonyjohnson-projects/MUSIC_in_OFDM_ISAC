@@ -203,6 +203,11 @@ def _study_reference_fields(study: CommunicationsStudyResult) -> dict[str, str]:
         "burst_profile": study.config.burst_profile.name,
         "aperture_size": f"{study.config.array_geometry.n_rx_cols:d}",
         "representative_seed": f"{study.config.rng_seed:d}",
+        "music_model_order_mode": study.config.music_model_order_mode,
+        "music_fixed_model_order": (
+            f"{study.config.music_fixed_model_order:d}" if study.config.music_fixed_model_order is not None else ""
+        ),
+        "fbss_ablation_enabled": f"{int(study.config.enable_fbss_ablation):d}",
     }
 
 
@@ -218,7 +223,9 @@ def _all_sweep_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, 
 def _trial_level_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
-        point_sources = [study.nominal_point, study.pilot_only_nominal_point]
+        point_sources = [study.nominal_point]
+        if study.pilot_only_nominal_point is not None:
+            point_sources.append(study.pilot_only_nominal_point)
         point_sources.extend(point for sweep in study.sweeps for point in sweep.points)
         for point in point_sources:
             for trial_row in point.trial_rows:
@@ -230,6 +237,37 @@ def _trial_level_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str
                         **trial_row,
                     }
                 )
+    return rows
+
+
+def _stage_diagnostic_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
+    """Extract azimuth-stage diagnostics for MUSIC nominal trials."""
+    rows: list[dict[str, str]] = []
+    for study in studies:
+        for trial_row in study.nominal_point.trial_rows:
+            if trial_row.get("method") != "music_masked":
+                continue
+            if trial_row.get("estimator_family") != "headline":
+                continue
+            rows.append({
+                "anchor": trial_row["anchor"],
+                "anchor_label": trial_row["anchor_label"],
+                "scene_class": trial_row["scene_class"],
+                "scene_label": trial_row["scene_label"],
+                "trial_index": trial_row["trial_index"],
+                "music_model_order_mode": trial_row.get("music_model_order_mode", ""),
+                "music_fixed_model_order": trial_row.get("music_fixed_model_order", ""),
+                "estimated_model_order": trial_row.get("estimated_model_order", ""),
+                "music_stage_azimuth_peak_count": trial_row.get("music_stage_azimuth_peak_count", ""),
+                "music_stage_azimuth_candidate_count": trial_row.get("music_stage_azimuth_candidate_count", ""),
+                "music_stage_azimuth_candidates_deg": trial_row.get("music_stage_azimuth_candidates_deg", ""),
+                "music_stage_coarse_candidate_count": trial_row.get("music_stage_coarse_candidate_count", ""),
+                "music_stage_coarse_candidates": trial_row.get("music_stage_coarse_candidates", ""),
+                "joint_detection_success": trial_row["joint_detection_success"],
+                "joint_resolution_success": trial_row["joint_resolution_success"],
+                "truth_targets": trial_row["truth_targets"],
+                "detections": trial_row["detections"],
+            })
     return rows
 
 
@@ -252,6 +290,8 @@ def _polar_to_xy(range_m: float, azimuth_deg: float) -> tuple[float, float]:
 def _representative_resource_mask_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
+        if study.representative_trial is None:
+            continue
         reference = _study_reference_fields(study)
         masked_observation = study.representative_trial.masked_observation
         role_grid = masked_observation.resource_grid.role_grid
@@ -280,6 +320,8 @@ def _representative_resource_mask_rows(studies: list[CommunicationsStudyResult])
 def _representative_scene_geometry_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
+        if study.representative_trial is None:
+            continue
         reference = _study_reference_fields(study)
         scenario = study.representative_trial.masked_observation.snapshot.scenario
         static_labels = {scatterer.label for scatterer in study.config.scene_class.static_clutter}
@@ -363,6 +405,8 @@ def _representative_scene_geometry_rows(studies: list[CommunicationsStudyResult]
 def _representative_range_doppler_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
+        if study.representative_trial is None:
+            continue
         reference = _study_reference_fields(study)
         fft_cube = study.representative_trial.fft_cube
         power_cube = fft_cube.power_cube
@@ -396,6 +440,8 @@ def _representative_music_spectrum_rows_for_series(
     detections: tuple,
     estimator_set: str,
 ) -> list[dict[str, str]]:
+    if study.representative_trial is None:
+        return []
     reference = _study_reference_fields(study)
     reference["estimator_set"] = estimator_set
     known_cube = extract_known_symbol_cube(study.representative_trial.masked_observation)
@@ -407,7 +453,7 @@ def _representative_music_spectrum_rows_for_series(
 
     spatial_cov = fbss_covariance(global_matrix, cfg.fbss_subarray_len)
     spatial_positions = cfg.effective_horizontal_positions_m[: cfg.fbss_subarray_len]
-    estimated_model_order = _estimate_music_model_order(spatial_cov, global_matrix.shape[1])
+    estimated_model_order = _estimate_music_model_order(spatial_cov, global_matrix.shape[1], cfg)
     spectrum_target_order = max(max(1, cfg.expected_target_count), estimated_model_order)
 
     azimuth_grid = np.linspace(
@@ -505,6 +551,8 @@ def _representative_music_spectrum_rows_for_series(
 def _representative_music_spectrum_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
+        if study.representative_trial is None:
+            continue
         rows.extend(
             _representative_music_spectrum_rows_for_series(
                 study,
@@ -521,6 +569,8 @@ def _representative_music_spectrum_rows(studies: list[CommunicationsStudyResult]
 def _representative_fbss_ablation_spectrum_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
+        if study.representative_trial is None:
+            continue
         if study.representative_trial.fbss_ablation_estimates is None:
             continue
         for variant_name in FBSS_ABLATION_ORDER:
@@ -646,6 +696,8 @@ def _nominal_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, st
 def _pilot_only_nominal_rows(studies: list[CommunicationsStudyResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for study in studies:
+        if study.pilot_only_nominal_point is None:
+            continue
         point = study.pilot_only_nominal_point
         for method_name in METHOD_ORDER:
             summary = point.method_summaries[method_name]
@@ -880,6 +932,8 @@ def _plot_runtime_summary(output_path: Path, studies: list[CommunicationsStudyRe
 
 
 def _plot_representative_resource_mask(output_path: Path, study: CommunicationsStudyResult) -> None:
+    if study.representative_trial is None:
+        return
     role_grid = study.representative_trial.masked_observation.resource_grid.role_grid
     fig, ax = plt.subplots(figsize=(8, 4))
     cmap = ListedColormap(["#F0F0F0", "#4C72B0", "#55A868", "#C44E52"])
@@ -895,6 +949,8 @@ def _plot_representative_resource_mask(output_path: Path, study: CommunicationsS
 
 
 def _plot_representative_spectrum(output_path: Path, study: CommunicationsStudyResult) -> None:
+    if study.representative_trial is None:
+        return
     fft_cube = study.representative_trial.fft_cube.power_cube
     range_doppler = np.max(fft_cube, axis=0)
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -955,16 +1011,33 @@ def write_all_outputs(
     _write_csv(data_dir / "all_sweep_results.csv", all_sweep_rows)
     _write_csv(data_dir / "trial_level_results.csv", _trial_level_rows(studies))
     _write_csv(data_dir / "nominal_summary.csv", _nominal_rows(studies))
-    _write_csv(data_dir / "pilot_only_nominal_summary.csv", _pilot_only_nominal_rows(studies))
+    pilot_only_rows = _pilot_only_nominal_rows(studies)
+    if pilot_only_rows:
+        _write_csv(data_dir / "pilot_only_nominal_summary.csv", pilot_only_rows)
     _write_csv(data_dir / "runtime_summary.csv", _runtime_rows(studies))
     _write_csv(data_dir / "failure_modes.csv", _failure_rows(studies))
     _write_csv(data_dir / "usefulness_windows.csv", _usefulness_rows(studies))
-    _write_csv(data_dir / "fbss_ablation_results.csv", _fbss_ablation_rows(studies))
-    _write_csv(data_dir / "representative_resource_mask.csv", _representative_resource_mask_rows(studies))
-    _write_csv(data_dir / "representative_scene_geometry.csv", _representative_scene_geometry_rows(studies))
-    _write_csv(data_dir / "representative_range_doppler.csv", _representative_range_doppler_rows(studies))
-    _write_csv(data_dir / "representative_music_spectra.csv", _representative_music_spectrum_rows(studies))
-    _write_csv(data_dir / "representative_fbss_ablation_spectra.csv", _representative_fbss_ablation_spectrum_rows(studies))
+    stage_diag_rows = _stage_diagnostic_rows(studies)
+    if stage_diag_rows:
+        _write_csv(data_dir / "stage_diagnostics.csv", stage_diag_rows)
+    fbss_rows = _fbss_ablation_rows(studies)
+    if fbss_rows:
+        _write_csv(data_dir / "fbss_ablation_results.csv", fbss_rows)
+    representative_resource_rows = _representative_resource_mask_rows(studies)
+    if representative_resource_rows:
+        _write_csv(data_dir / "representative_resource_mask.csv", representative_resource_rows)
+    representative_geometry_rows = _representative_scene_geometry_rows(studies)
+    if representative_geometry_rows:
+        _write_csv(data_dir / "representative_scene_geometry.csv", representative_geometry_rows)
+    representative_range_doppler_rows = _representative_range_doppler_rows(studies)
+    if representative_range_doppler_rows:
+        _write_csv(data_dir / "representative_range_doppler.csv", representative_range_doppler_rows)
+    representative_music_rows = _representative_music_spectrum_rows(studies)
+    if representative_music_rows:
+        _write_csv(data_dir / "representative_music_spectra.csv", representative_music_rows)
+    representative_fbss_rows = _representative_fbss_ablation_spectrum_rows(studies)
+    if representative_fbss_rows:
+        _write_csv(data_dir / "representative_fbss_ablation_spectra.csv", representative_fbss_rows)
     _plot_runtime_summary(figures_dir / "runtime_summary.png", studies)
 
     if include_scene_comparison:
@@ -972,6 +1045,6 @@ def write_all_outputs(
     if include_anchor_comparison:
         _write_csv(data_dir / "anchor_comparison.csv", _comparison_rows(studies, key="anchor"))
 
-    if studies:
+    if studies and studies[0].representative_trial is not None:
         _plot_representative_resource_mask(figures_dir / "representative_resource_mask.png", studies[0])
         _plot_representative_spectrum(figures_dir / "representative_spectrum.png", studies[0])

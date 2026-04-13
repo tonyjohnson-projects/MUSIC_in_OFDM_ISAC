@@ -25,6 +25,7 @@ ACTIVE_SWEEPS=(
   range_separation
   velocity_separation
   angle_separation
+  nuisance_gain_offset
 )
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
@@ -74,6 +75,7 @@ required_data+=(
   representative_range_doppler.csv
   representative_music_spectra.csv
   representative_fbss_ablation_spectra.csv
+  stage_diagnostics.csv
 )
 
 if [[ "$SCENE_CLASS" == "all" ]]; then

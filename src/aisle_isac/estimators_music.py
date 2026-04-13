@@ -49,14 +49,18 @@ def _run_masked_fft_estimator(
     known_cube: np.ndarray,
 ) -> MethodEstimate:
     start_time = time.perf_counter()
-    detections = refine_detection_set_local(
-        cfg,
-        known_cube,
-        frontend.coarse_candidates,
-        frontend.search_bounds,
-        candidate_pool_size=cfg.runtime_profile.coarse_candidate_count,
-        range_upper_bound_m=_range_search_upper_m(cfg, frontend.search_bounds),
-    )
+    if cfg.skip_local_refinement:
+        pool_size = cfg.runtime_profile.coarse_candidate_count
+        detections = frontend.coarse_candidates[:max(1, pool_size)]
+    else:
+        detections = refine_detection_set_local(
+            cfg,
+            known_cube,
+            frontend.coarse_candidates,
+            frontend.search_bounds,
+            candidate_pool_size=cfg.runtime_profile.coarse_candidate_count,
+            range_upper_bound_m=_range_search_upper_m(cfg, frontend.search_bounds),
+        )
     incremental_runtime_s = time.perf_counter() - start_time
     return MethodEstimate(
         label=METHOD_LABELS["fft_masked"],

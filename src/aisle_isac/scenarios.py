@@ -225,8 +225,20 @@ def build_study_config(
     rx_columns: int = 8,
     suite: str = "headline",
     trial_count_override: int | None = None,
+    music_model_order_mode: str = "mdl",
+    music_fixed_model_order: int | None = None,
+    enable_fbss_ablation: bool = True,
+    global_nuisance_gain_offset_db: float = 0.0,
+    skip_local_refinement: bool = False,
 ) -> StudyConfig:
     """Resolve one complete study configuration."""
+
+    if music_model_order_mode not in {"mdl", "fixed", "expected"}:
+        raise ValueError("music_model_order_mode must be 'mdl', 'fixed', or 'expected'")
+    if music_fixed_model_order is not None and music_fixed_model_order < 1:
+        raise ValueError("music_fixed_model_order must be at least 1 when provided")
+    if music_model_order_mode == "fixed" and music_fixed_model_order is None:
+        raise ValueError("music_fixed_model_order is required when music_model_order_mode='fixed'")
 
     runtime_profile = build_runtime_profile(profile_name)
     if trial_count_override is not None:
@@ -248,4 +260,9 @@ def build_study_config(
         angle_separation_jitter_cells=scene_class.angle_separation_jitter_cells,
         target_amplitude_jitter_db=scene_class.target_amplitude_jitter_db,
         nuisance_gain_jitter_db=scene_class.nuisance_gain_jitter_db,
+        music_model_order_mode=music_model_order_mode,
+        music_fixed_model_order=music_fixed_model_order,
+        enable_fbss_ablation=enable_fbss_ablation,
+        global_nuisance_gain_offset_db=global_nuisance_gain_offset_db,
+        skip_local_refinement=skip_local_refinement,
     )
