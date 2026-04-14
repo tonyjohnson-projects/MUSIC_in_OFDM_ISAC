@@ -31,7 +31,9 @@ for scene in SCENES:
         study = run_communications_study(
             cfg, show_progress=True,
             suite="headline",
-            sweep_names=("nominal",),
+            # The nominal point is always evaluated separately by the study runner.
+            # Passing an empty tuple avoids launching the public sweep families.
+            sweep_names=(),
             include_pilot_only=False,
             include_representative=False,
         )

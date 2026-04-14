@@ -11,6 +11,10 @@ SCENE_CLASS="${SCENE_CLASS:-open_aisle}"
 JOBS="${JOBS:-$DEFAULT_JOBS}"
 TRIALS="${TRIALS:-}"
 CLEAN_OUTPUTS="${CLEAN_OUTPUTS:-1}"
+PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
+INCLUDE_PILOT_ONLY="${INCLUDE_PILOT_ONLY:-1}"
+INCLUDE_REPRESENTATIVE="${INCLUDE_REPRESENTATIVE:-1}"
+ENABLE_FBSS_ABLATION="${ENABLE_FBSS_ABLATION:-1}"
 SCHEMA_VERSION="2.0"
 ESTIMATOR_SET="fft_masked,music_masked"
 FBSS_ABLATION_SET="fbss_spatial_only,fbss_spatial_range,fbss_spatial_doppler,fbss_spatial_range_doppler"
@@ -33,6 +37,8 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   exit 1
 fi
 
+export PYTHONUNBUFFERED
+
 cmd=(
   "$PYTHON_BIN"
   "$ROOT_DIR/run_study.py"
@@ -50,6 +56,22 @@ fi
 if [[ "$CLEAN_OUTPUTS" == "1" ]]; then
   cmd+=(--clean-outputs)
 fi
+if [[ "$INCLUDE_PILOT_ONLY" != "1" ]]; then
+  cmd+=(--skip-pilot-only)
+fi
+if [[ "$INCLUDE_REPRESENTATIVE" != "1" ]]; then
+  cmd+=(--skip-representative)
+fi
+if [[ "$ENABLE_FBSS_ABLATION" != "1" ]]; then
+  cmd+=(--disable-fbss-ablation)
+fi
+
+echo "============================================================"
+echo "Build Results Bundle"
+echo "profile=$PROFILE suite=$SUITE anchor=$ANCHOR scene_class=$SCENE_CLASS jobs=$JOBS trials=${TRIALS:-default}"
+echo "include_pilot_only=$INCLUDE_PILOT_ONLY include_representative=$INCLUDE_REPRESENTATIVE enable_fbss_ablation=$ENABLE_FBSS_ABLATION"
+echo "python_bin=$PYTHON_BIN"
+echo "============================================================"
 
 "${cmd[@]}"
 
@@ -65,18 +87,28 @@ required_data+=(
   all_sweep_results.csv
   trial_level_results.csv
   nominal_summary.csv
-  pilot_only_nominal_summary.csv
   runtime_summary.csv
   failure_modes.csv
   usefulness_windows.csv
-  fbss_ablation_results.csv
-  representative_resource_mask.csv
-  representative_scene_geometry.csv
-  representative_range_doppler.csv
-  representative_music_spectra.csv
-  representative_fbss_ablation_spectra.csv
   stage_diagnostics.csv
 )
+if [[ "$INCLUDE_PILOT_ONLY" == "1" ]]; then
+  required_data+=(pilot_only_nominal_summary.csv)
+fi
+if [[ "$ENABLE_FBSS_ABLATION" == "1" ]]; then
+  required_data+=(fbss_ablation_results.csv)
+fi
+if [[ "$INCLUDE_REPRESENTATIVE" == "1" ]]; then
+  required_data+=(
+    representative_resource_mask.csv
+    representative_scene_geometry.csv
+    representative_range_doppler.csv
+    representative_music_spectra.csv
+  )
+  if [[ "$ENABLE_FBSS_ABLATION" == "1" ]]; then
+    required_data+=(representative_fbss_ablation_spectra.csv)
+  fi
+fi
 
 if [[ "$SCENE_CLASS" == "all" ]]; then
   required_data+=(scene_comparison.csv)
@@ -91,9 +123,13 @@ for sweep_name in "${ACTIVE_SWEEPS[@]}"; do
 done
 required_figures+=(
   runtime_summary.png
-  representative_resource_mask.png
-  representative_spectrum.png
 )
+if [[ "$INCLUDE_REPRESENTATIVE" == "1" ]]; then
+  required_figures+=(
+    representative_resource_mask.png
+    representative_spectrum.png
+  )
+fi
 
 for filename in "${required_data[@]}"; do
   [[ -f "$DATA_DIR/$filename" ]] || { echo "Missing data artifact: $filename" >&2; exit 1; }
@@ -140,8 +176,8 @@ fi
   echo "git_commit=$git_commit"
   echo "git_commit_short=$git_commit_short"
   echo "estimator_set=$ESTIMATOR_SET"
-  echo "fbss_ablation_set=$FBSS_ABLATION_SET"
-  echo "knowledge_modes=known_symbols,pilot_only"
+  echo "fbss_ablation_set=$([[ "$ENABLE_FBSS_ABLATION" == "1" ]] && echo "$FBSS_ABLATION_SET" || echo "disabled")"
+  echo "knowledge_modes=$([[ "$INCLUDE_PILOT_ONLY" == "1" ]] && echo "known_symbols,pilot_only" || echo "known_symbols")"
   echo "profile=$PROFILE"
   echo "suite=$SUITE"
   echo "anchor=$ANCHOR"
@@ -149,6 +185,9 @@ fi
   echo "sweeps=$(IFS=,; echo "${ACTIVE_SWEEPS[*]}")"
   echo "jobs=$JOBS"
   echo "trials=${TRIALS:-default}"
+  echo "include_pilot_only=$INCLUDE_PILOT_ONLY"
+  echo "include_representative=$INCLUDE_REPRESENTATIVE"
+  echo "enable_fbss_ablation=$ENABLE_FBSS_ABLATION"
   echo "submission_mode=$submission_mode"
   echo "python_bin=$PYTHON_BIN"
   echo "command=${cmd[*]}"

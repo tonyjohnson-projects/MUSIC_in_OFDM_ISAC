@@ -167,8 +167,25 @@ def main() -> None:
 
     studies = []
     total_start_time = time.perf_counter()
+    total_scene_runs = len(anchors) * len(scenes)
+    scene_run_index = 0
+    print("Starting study run", flush=True)
+    print(f"- profile: {args.profile}", flush=True)
+    print(f"- suite: {args.suite}", flush=True)
+    print(f"- anchors: {', '.join(anchors)}", flush=True)
+    print(f"- scene classes: {', '.join(scenes)}", flush=True)
+    print(f"- sweeps: {', '.join(active_sweeps)}", flush=True)
+    print(f"- worker processes: {max_workers}", flush=True)
+    print(f"- output root: {output_root}", flush=True)
     for anchor_name in anchors:
         for scene_name in scenes:
+            scene_run_index += 1
+            scene_start_time = time.perf_counter()
+            print(
+                f"[{time.strftime('%H:%M:%S')}] "
+                f"Scene {scene_run_index}/{total_scene_runs} starting: {anchor_name} / {scene_name}",
+                flush=True,
+            )
             cfg = build_study_config(
                 anchor_name,
                 scene_name,
@@ -191,6 +208,12 @@ def main() -> None:
                     include_representative=not args.skip_representative,
                 )
             )
+            print(
+                f"[{time.strftime('%H:%M:%S')}] "
+                f"Scene {scene_run_index}/{total_scene_runs} finished: {anchor_name} / {scene_name} "
+                f"in {time.perf_counter() - scene_start_time:.1f} s",
+                flush=True,
+            )
 
     include_anchor_comparison = len(anchors) > 1
     include_scene_comparison = len(scenes) > 1
@@ -204,21 +227,21 @@ def main() -> None:
     )
     total_runtime_s = time.perf_counter() - total_start_time
 
-    print("Communications-Limited OFDM ISAC MUSIC Study")
-    print("-------------------------------------------")
-    print(f"Profile: {args.profile}")
-    print(f"Suite: {args.suite}")
-    print(f"Sweeps: {', '.join(active_sweeps)}")
-    print(f"Anchors: {', '.join(anchors)}")
-    print(f"Scene classes: {', '.join(scenes)}")
-    print(f"Trials per sweep point: {studies[0].nominal_point.method_summaries['fft_masked'].trial_count}")
-    print(f"Worker processes: {max_workers}")
-    print(f"MUSIC model order mode: {music_model_order_mode}")
+    print("Communications-Limited OFDM ISAC MUSIC Study", flush=True)
+    print("-------------------------------------------", flush=True)
+    print(f"Profile: {args.profile}", flush=True)
+    print(f"Suite: {args.suite}", flush=True)
+    print(f"Sweeps: {', '.join(active_sweeps)}", flush=True)
+    print(f"Anchors: {', '.join(anchors)}", flush=True)
+    print(f"Scene classes: {', '.join(scenes)}", flush=True)
+    print(f"Trials per sweep point: {studies[0].nominal_point.method_summaries['fft_masked'].trial_count}", flush=True)
+    print(f"Worker processes: {max_workers}", flush=True)
+    print(f"MUSIC model order mode: {music_model_order_mode}", flush=True)
     if args.music_fixed_order is not None:
-        print(f"MUSIC fixed order: {args.music_fixed_order}")
-    print(f"Total runtime: {total_runtime_s:.1f} s")
-    print(f"Output root: {output_root}")
-    print("Generated CSVs:")
+        print(f"MUSIC fixed order: {args.music_fixed_order}", flush=True)
+    print(f"Total runtime: {total_runtime_s:.1f} s", flush=True)
+    print(f"Output root: {output_root}", flush=True)
+    print("Generated CSVs:", flush=True)
     csv_filenames = [f"{sweep_name}.csv" for sweep_name in active_sweeps]
     csv_filenames.extend(
         [
@@ -251,19 +274,19 @@ def main() -> None:
     if include_anchor_comparison:
         csv_filenames.append("anchor_comparison.csv")
     for filename in csv_filenames:
-        print(f"- {output_root / 'data' / filename}")
-    print("Generated figures:")
+        print(f"- {output_root / 'data' / filename}", flush=True)
+    print("Generated figures:", flush=True)
     figure_filenames = [f"{sweep_name}.png" for sweep_name in active_sweeps]
     figure_filenames.append("runtime_summary.png")
     if not args.skip_representative:
         figure_filenames.extend(["representative_resource_mask.png", "representative_spectrum.png"])
     for filename in figure_filenames:
-        print(f"- {output_root / 'figures' / filename}")
-    print(f"CSV-driven plotting script: {REPO_ROOT / 'scripts' / 'plot_results_from_csv.py'}")
+        print(f"- {output_root / 'figures' / filename}", flush=True)
+    print(f"CSV-driven plotting script: {REPO_ROOT / 'scripts' / 'plot_results_from_csv.py'}", flush=True)
 
     first_study = studies[0]
-    print()
-    print(f"Nominal summary: {first_study.anchor_label} / {first_study.scene_label}")
+    print(flush=True)
+    print(f"Nominal summary: {first_study.anchor_label} / {first_study.scene_label}", flush=True)
     for method_name in METHOD_ORDER:
         summary = first_study.nominal_point.method_summaries[method_name]
         print(
@@ -273,7 +296,8 @@ def main() -> None:
             f"Pvel={summary.velocity_resolution_probability:.2f}, "
             f"Pangle={summary.angle_resolution_probability:.2f}, "
             f"uncond_joint_rmse={summary.unconditional_joint_assignment_rmse:.3f}, "
-            f"total_runtime={summary.total_runtime_s:.4f}s"
+            f"total_runtime={summary.total_runtime_s:.4f}s",
+            flush=True,
         )
 
 

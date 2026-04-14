@@ -7,3 +7,14 @@ dist/
 build/
 results/
 .DS_Store
+
+# LaTeX build artifacts
+report/*.aux
+report/*.fdb_latexmk
+report/*.fls
+report/*.log
+report/*.out
+report/*.synctex.gz
+
+# Runtime logs
+*.log

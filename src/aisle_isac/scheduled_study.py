@@ -6,6 +6,7 @@ import concurrent.futures as futures
 from dataclasses import dataclass, replace
 import gc
 import os
+import time
 
 import numpy as np
 
@@ -43,6 +44,15 @@ PUBLIC_SWEEP_NAMES = (
 SUBMISSION_SWEEP_NAMES = PUBLIC_SWEEP_NAMES
 AXIS_ISOLATION_MULTIPLIER = 2.4
 FBSS_ABLATION_SWEEP_NAMES = ("nominal", "bandwidth_span", "slow_time_span")
+
+
+def _progress_bar(completed: int, total: int, *, width: int = 24) -> str:
+    """Render a simple fixed-width ASCII progress bar."""
+
+    if total <= 0:
+        return "[" + ("-" * width) + "]"
+    filled = min(width, int(round(width * completed / total)))
+    return "[" + ("#" * filled) + ("-" * (width - filled)) + "]"
 
 
 @dataclass(frozen=True)
@@ -852,6 +862,9 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
         else None
     )
     trial_rows: list[dict[str, str]] = []
+    trial_start_time = time.perf_counter()
+    emit_trial_progress = task.sweep_name in {"nominal", "pilot_only_nominal"} and cfg.runtime_profile.n_trials >= 8
+    trial_progress_stride = max(1, min(8, cfg.runtime_profile.n_trials))
     for trial_index, child_seed in enumerate(seed_sequence.spawn(cfg.runtime_profile.n_trials)):
         trial_result = simulate_communications_trial(
             cfg,
@@ -899,6 +912,16 @@ def _evaluate_point_task(task: SweepPointSpec) -> SweepPointResult:
                 )
         # Free large arrays (radar cubes, FFT power cubes) after metrics are extracted.
         del trial_result
+        if emit_trial_progress:
+            completed_trials = trial_index + 1
+            if completed_trials % trial_progress_stride == 0 or completed_trials == cfg.runtime_profile.n_trials:
+                print(
+                    f"[{cfg.anchor.name}/{cfg.scene_class.name}] "
+                    f"{task.sweep_name} trials {_progress_bar(completed_trials, cfg.runtime_profile.n_trials)} "
+                    f"{completed_trials}/{cfg.runtime_profile.n_trials} "
+                    f"({time.perf_counter() - trial_start_time:.1f} s)",
+                    flush=True,
+                )
         if trial_index % 16 == 15:
             gc.collect()
 
@@ -978,27 +1001,87 @@ def _run_selected_sweeps(
         for sweep_name in selected_sweeps
     }
     points_by_sweep: dict[str, list[SweepPointResult]] = {sweep_name: [] for sweep_name in selected_sweeps}
+    sweep_start_times = {sweep_name: time.perf_counter() for sweep_name in selected_sweeps}
 
     if max_workers == 1:
         for sweep_name in selected_sweeps:
+            expected_count = len(specs_by_sweep[sweep_name])
             for spec in specs_by_sweep[sweep_name]:
                 points_by_sweep[sweep_name].append(_evaluate_point_task(spec))
+                if show_progress:
+                    completed_count = len(points_by_sweep[sweep_name])
+                    print(
+                        f"[{cfg.anchor.name}/{cfg.scene_class.name}] "
+                        f"{sweep_name} {_progress_bar(completed_count, expected_count)} "
+                        f"{completed_count}/{expected_count} points",
+                        flush=True,
+                    )
             if show_progress:
-                print(f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} ({len(points_by_sweep[sweep_name])} points)")
+                elapsed_s = time.perf_counter() - sweep_start_times[sweep_name]
+                print(
+                    f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} "
+                    f"({_progress_bar(expected_count, expected_count)} {expected_count}/{expected_count} points, {elapsed_s:.1f} s)",
+                    flush=True,
+                )
     else:
         completed_counts = {sweep_name: 0 for sweep_name in selected_sweeps}
         expected_counts = {sweep_name: len(specs) for sweep_name, specs in specs_by_sweep.items()}
         future_to_sweep: dict[futures.Future, str] = {}
+        heartbeat_interval_s = 15.0
         with futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             for sweep_name in selected_sweeps:
                 for spec in specs_by_sweep[sweep_name]:
                     future_to_sweep[executor.submit(_evaluate_point_task, spec)] = sweep_name
-            for future in futures.as_completed(future_to_sweep):
-                sweep_name = future_to_sweep[future]
-                points_by_sweep[sweep_name].append(future.result())
-                completed_counts[sweep_name] += 1
-                if show_progress and completed_counts[sweep_name] == expected_counts[sweep_name]:
-                    print(f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} ({expected_counts[sweep_name]} points)")
+            pending = set(future_to_sweep)
+            scene_start_time = time.perf_counter()
+            total_points = len(pending)
+            if show_progress:
+                print(
+                    f"[{cfg.anchor.name}/{cfg.scene_class.name}] submitted {total_points} sweep points "
+                    f"across {len(selected_sweeps)} sweeps",
+                    flush=True,
+                )
+            while pending:
+                done, pending = futures.wait(
+                    pending,
+                    timeout=heartbeat_interval_s,
+                    return_when=futures.FIRST_COMPLETED,
+                )
+                if not done:
+                    if show_progress:
+                        completed_total = sum(completed_counts.values())
+                        sweep_status = ", ".join(
+                            f"{sweep_name}:{completed_counts[sweep_name]}/{expected_counts[sweep_name]}"
+                            for sweep_name in selected_sweeps
+                        )
+                        print(
+                            f"[{cfg.anchor.name}/{cfg.scene_class.name}] still running "
+                            f"{_progress_bar(completed_total, total_points)} {completed_total}/{total_points} points "
+                            f"after {time.perf_counter() - scene_start_time:.1f} s "
+                            f"({sweep_status})",
+                            flush=True,
+                        )
+                    continue
+                for future in done:
+                    sweep_name = future_to_sweep[future]
+                    points_by_sweep[sweep_name].append(future.result())
+                    completed_counts[sweep_name] += 1
+                    if show_progress:
+                        completed_count = completed_counts[sweep_name]
+                        expected_count = expected_counts[sweep_name]
+                        print(
+                            f"[{cfg.anchor.name}/{cfg.scene_class.name}] "
+                            f"{sweep_name} {_progress_bar(completed_count, expected_count)} "
+                            f"{completed_count}/{expected_count} points",
+                            flush=True,
+                        )
+                        if completed_count == expected_count:
+                            elapsed_s = time.perf_counter() - sweep_start_times[sweep_name]
+                            print(
+                                f"[{cfg.anchor.name}/{cfg.scene_class.name}] completed {sweep_name} "
+                                f"({_progress_bar(expected_count, expected_count)} {expected_count}/{expected_count} points, {elapsed_s:.1f} s)",
+                                flush=True,
+                            )
 
     return [_build_sweep_result(cfg, sweep_name, points_by_sweep[sweep_name]) for sweep_name in selected_sweeps]
 

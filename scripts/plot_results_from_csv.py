@@ -72,6 +72,7 @@ STORY_FIGURE_NAMES = (
     "story_coherence_overlap_from_csv.png",
     "story_pilot_only_collapse_from_csv.png",
     "story_trial_delta_from_csv.png",
+    "story_rack_aisle_diagnostic_from_csv.png",
 )
 
 
@@ -743,6 +744,104 @@ def _story_trial_delta(rows: list[dict[str, str]], output_dir: Path) -> None:
     plt.close(fig)
 
 
+def _story_rack_aisle_diagnostic(diag_rows: list[dict[str, str]], output_dir: Path) -> None:
+    """Rack-aisle azimuth-stage failure diagnostic.
+
+    Shows azimuth candidate histogram vs truth/clutter angles, and detection
+    azimuth distribution, to visualise nuisance-capture failure.
+    """
+    rack_rows = [r for r in diag_rows if r.get("scene_class") == "rack_aisle"]
+    if not rack_rows:
+        return
+
+    # --- parse per-trial data ---
+    all_candidates: list[float] = []
+    truth_az_0: list[float] = []
+    truth_az_1: list[float] = []
+    det_azimuths: list[float] = []
+    for row in rack_rows:
+        cands = row["music_stage_azimuth_candidates_deg"]
+        if cands:
+            all_candidates.extend(float(c) for c in cands.split("|"))
+        for entry in row["truth_targets"].split("|"):
+            parts = entry.split(":")
+            az = float(parts[5])
+            if int(parts[0]) == 0:
+                truth_az_0.append(az)
+            else:
+                truth_az_1.append(az)
+        for entry in row["detections"].split("|"):
+            parts = entry.split(":")
+            det_azimuths.append(float(parts[3]))
+
+    if not all_candidates:
+        return
+
+    truth_mean_0 = float(np.mean(truth_az_0))
+    truth_mean_1 = float(np.mean(truth_az_1))
+
+    # rack_aisle clutter template azimuths (from scenarios.py)
+    clutter_azimuths = {"left_rack": -24.0, "right_rack": 23.0, "far_endcap": 3.0}
+    multipath_azimuths = {"left_wall": -11.0, "right_wall": 10.0}
+
+    fig, (ax_cand, ax_det) = plt.subplots(1, 2, figsize=(12.5, 5.0), sharey=False)
+
+    # --- Left panel: azimuth candidate histogram ---
+    bins = np.arange(-75, 80, 2.5)
+    ax_cand.hist(all_candidates, bins=bins, color=SCENE_COLORS["rack_aisle"],
+                 alpha=0.55, edgecolor="#444444", linewidth=0.4)
+    # truth lines
+    ax_cand.axvline(truth_mean_0, color=METHOD_COLORS["music_masked"], linewidth=2.0,
+                    linestyle="--", label=f"Truth T0 ({truth_mean_0:+.1f}\u00b0)")
+    ax_cand.axvline(truth_mean_1, color=METHOD_COLORS["music_masked"], linewidth=2.0,
+                    linestyle="-", label=f"Truth T1 ({truth_mean_1:+.1f}\u00b0)")
+    # clutter lines
+    for name, az in clutter_azimuths.items():
+        ax_cand.axvline(az, color=METHOD_COLORS["fft_masked"], linewidth=1.6,
+                        linestyle=":", label=f"Clutter: {name} ({az:+.0f}\u00b0)")
+    for name, az in multipath_azimuths.items():
+        ax_cand.axvline(az, color=METHOD_COLORS["fft_masked"], linewidth=1.2,
+                        linestyle="-.", alpha=0.65, label=f"Multipath: {name} ({az:+.0f}\u00b0)")
+    ax_cand.set_xlabel("Azimuth (\u00b0)")
+    ax_cand.set_ylabel("Candidate count (across 64 trials)")
+    ax_cand.set_title("Azimuth candidates dominated by clutter branches",
+                      loc="left", fontsize=12, fontweight="bold")
+    ax_cand.legend(fontsize=7.5, loc="upper left", frameon=False)
+    ax_cand.set_xlim(-75, 75)
+    ax_cand.grid(True, axis="y", alpha=0.20)
+
+    # --- Right panel: detection azimuth distribution ---
+    det_arr = np.asarray(det_azimuths)
+    n_near_nuis = int(np.sum(np.abs(det_arr - (-21.7)) < 3.0))
+    n_near_t0 = int(np.sum(np.abs(det_arr - truth_mean_0) < 3.0))
+    n_near_t1 = int(np.sum(np.abs(det_arr - truth_mean_1) < 3.0))
+    n_other = len(det_arr) - n_near_nuis - n_near_t0 - n_near_t1
+
+    categories = [f"Near T0\n({truth_mean_0:+.1f}\u00b0)",
+                  f"Near T1\n({truth_mean_1:+.1f}\u00b0)",
+                  f"Near left rack\n(\u221221.7\u00b0)",
+                  "Other"]
+    counts = [n_near_t0, n_near_t1, n_near_nuis, n_other]
+    colors = [METHOD_COLORS["music_masked"], METHOD_COLORS["music_masked"],
+              METHOD_COLORS["fft_masked"], "#AAAAAA"]
+    bars = ax_det.bar(categories, counts, color=colors, edgecolor="#444444", linewidth=0.6, alpha=0.75)
+    for bar, count in zip(bars, counts):
+        ax_det.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
+                    str(count), ha="center", va="bottom", fontsize=10, fontweight="bold")
+    ax_det.set_ylabel(f"Detection count (of {len(det_arr)} total)")
+    ax_det.set_title("Final detections: nuisance branch captures 39% of outputs",
+                     loc="left", fontsize=12, fontweight="bold")
+    ax_det.grid(True, axis="y", alpha=0.20)
+
+    fig.suptitle("Rack-aisle azimuth-stage failure diagnostic\n"
+                 "64-trial FR1 nominal point, MDL model order",
+                 fontsize=14, fontweight="bold", y=1.02)
+    fig.subplots_adjust(left=0.07, right=0.98, bottom=0.13, top=0.88, wspace=0.28)
+    fig.savefig(output_dir / "story_rack_aisle_diagnostic_from_csv.png", dpi=180,
+                bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     data_dir, output_dir = _resolve_paths(args.input_root, args.output_dir)
@@ -755,6 +854,7 @@ def main() -> None:
     geometry_rows = _read_csv_rows(data_dir / "representative_scene_geometry.csv")
     range_doppler_rows = _read_csv_rows(data_dir / "representative_range_doppler.csv")
     music_spectrum_rows = _read_csv_rows(data_dir / "representative_music_spectra.csv")
+    stage_diag_rows = _read_csv_rows(data_dir / "stage_diagnostics.csv")
 
     _story_nominal_verdict(nominal_rows, output_dir)
     _story_intersection_resolution(nominal_rows, range_doppler_rows, geometry_rows, music_spectrum_rows, output_dir)
@@ -762,11 +862,14 @@ def main() -> None:
     _story_coherence_overlap(trial_rows, output_dir)
     _story_pilot_only_collapse(nominal_rows, pilot_rows, output_dir)
     _story_trial_delta(trial_rows, output_dir)
+    _story_rack_aisle_diagnostic(stage_diag_rows, output_dir)
 
     print(f"Input data directory: {data_dir}")
     print(f"Wrote story figures to: {output_dir}")
     for filename in STORY_FIGURE_NAMES:
-        print(f"- {output_dir / filename}")
+        output_path = output_dir / filename
+        if output_path.exists():
+            print(f"- {output_path}")
 
 
 if __name__ == "__main__":

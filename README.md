@@ -1,112 +1,87 @@
 # MUSIC in Waveform-Limited OFDM ISAC
 
-This repository is a single-student MSEE final project in communications and signal processing.
+MSEE final project in communications and signal processing.
 
-The project started from a 1-D range-only MUSIC study that showed clear upside under controlled conditions. This repo is the follow-on study: what survives when MUSIC is moved into a waveform-limited integrated sensing and communications (ISAC) setting with a communications-style OFDM resource grid, masked support, clutter, multipath, and a fair FFT baseline.
+This project started from a 1-D range-only MUSIC study that showed clear super-resolution upside under controlled conditions. This repo is the follow-on: a regime-boundary study of what survives when MUSIC operates in a waveform-limited OFDM ISAC setting with fragmented support, structured clutter, coherent multipath, and a fair FFT baseline.
+
+## Thesis Framing
+
+The thesis claim is not "MUSIC is generically better than FFT." It is:
+
+**MUSIC has real super-resolution capability in realistic OFDM ISAC, but its value is regime-dependent. The project identifies two failure mechanisms---model-order overestimation under masked covariance (correctable) and nuisance-dominated spatial subspace capture (a hard boundary)---and maps the regimes where the earlier 1-D upside survives into 3-D staged operation.**
+
+## Key Results (64-Trial FR1 Submission Bundle)
+
+### Nominal Joint-Resolution Probability
+
+| Scene | FFT Baseline | MDL MUSIC | Expected-Order MUSIC |
+|-------|-------------|-----------|---------------------|
+| Intersection | 0.156 | 0.703 | 0.844 |
+| Open Aisle | 0.719 | 0.563 | 0.719 |
+| Rack Aisle | 0.031 | 0.000 | 0.000 |
+
+### What the Evidence Shows
+
+1. **MDL path:** MUSIC wins strongly only in `intersection`, loses to FFT in `open_aisle`, and collapses in `rack_aisle`.
+2. **Model-order diagnostic:** Expected-order MUSIC (K=2) recovers `open_aisle` to FFT parity and strengthens `intersection`, proving the super-resolution machinery is intact when subspace dimensioning is correct.
+3. **Rack-aisle failure mechanism:** Fixing model order does not help. Stage diagnostics show nuisance-aligned azimuth candidates near the left-rack clutter at -24° capturing the spatial search in every trial, with 39% of final detections landing on a nuisance branch.
+4. **Nuisance-strength sweep:** `intersection` stays robust across -6 to +6 dB clutter variation; `open_aisle` degrades sharply as nuisance power rises; `rack_aisle` remains at zero throughout.
 
 ## Project Scope
 
-The project is intentionally narrow:
-
-- two-target indoor industrial scenes
-- monostatic FR1 OFDM sensing
-- communications-limited resource grids with fragmented occupancy
-- known-symbol sensing as the main path
-- `pilot_only` as a diagnostic, not a complete unknown-data receiver
-- a fair comparison between masked FFT and masked staged MUSIC
-
-The right thesis framing is not "MUSIC is generically better than FFT."
-
-It is closer to:
-
-**How much super-resolution benefit from MUSIC survives in realistic, waveform-limited OFDM ISAC, what adaptations are needed, and where does the method break down?**
-
-## Current Position
-
-The canonical saved evidence is still the FR1 submission bundle under [results/submission](results/submission).
-
-That bundle supports a regime-boundary conclusion:
-
-- MUSIC is not generically superior to a fair masked FFT + local-refinement baseline.
-- MUSIC helps strongly in some regimes, especially the nominal `intersection` scene.
-- MUSIC loses in nominal `open_aisle` in the saved submission bundle.
-- MUSIC collapses in nominal `rack_aisle`.
-- `pilot_only` collapses for both methods under the current receiver path.
-
-Since that submission snapshot, the repo has added faster iteration tools and new diagnostics. The most important current exploratory finding is:
-
-- MDL-based model-order estimation is materially hurting staged MUSIC in `open_aisle` and `intersection`.
-- For nominal low-trial confirmation runs at submission-density search settings, forcing `K=2` improves MUSIC in those scenes.
-- `rack_aisle` still fails even with fixed `K=2`, which points to an earlier azimuth/clutter failure rather than a pure model-order problem.
-
-Those exploratory comparisons are saved under [results/analysis](results/analysis). They are useful for steering the project, but they are not yet a replacement for the thesis-grade submission bundle.
+- Two-target indoor industrial scenes (open aisle, intersection, rack aisle)
+- Monostatic FR1 OFDM sensing from a private-5G-style waveform anchor
+- Communications-limited resource grids with fragmented occupancy
+- Known-symbol sensing as the main path
+- A fair comparison between masked FFT + local refinement and masked staged MUSIC + FBSS
 
 ## Methods
 
 Headline comparison:
 
-1. `fft_masked`
-   Weighted masked angle-range-Doppler FFT with local matched-filter refinement.
-2. `music_masked`
-   Staged masked azimuth -> range -> Doppler MUSIC with spatial FBSS, support-aware range/Doppler FBSS where valid, and local matched-filter refinement.
+1. **`fft_masked`** — Weighted masked angle-range-Doppler FFT with local matched-filter refinement.
+2. **`music_masked`** — Staged masked azimuth → range → Doppler MUSIC with spatial FBSS, support-aware range/Doppler FBSS where valid, and local matched-filter refinement.
 
 Focused diagnostics:
 
 - FBSS ablation variants
 - `pilot_only` nominal diagnostic
-- fixed-order MUSIC via `--music-fixed-order`
-- staged candidate logging in the trial-level CSVs
+- Expected-order MUSIC (`--music-model-order expected`)
+- Fixed-order MUSIC (`--music-fixed-order`)
+- Nuisance-gain-offset sweep (`nuisance_gain_offset`)
+- Per-trial azimuth-stage diagnostics in `stage_diagnostics.csv`
 
 ## Repository Layout
 
-- [src/aisle_isac](src/aisle_isac): estimator, channel, resource-grid, and reporting code
-- [run_study.py](run_study.py): main CLI entrypoint
-- [report/current_assessment.tex](report/current_assessment.tex): current report source
-- [results/submission](results/submission): canonical saved submission bundle
-- [results/analysis](results/analysis): exploratory analyses used to steer the next phase
+- [src/aisle_isac](src/aisle_isac) — estimator, channel, resource-grid, and reporting code
+- [run_study.py](run_study.py) — main CLI entrypoint
+- [scripts/plot_results_from_csv.py](scripts/plot_results_from_csv.py) — generate story figures from saved CSVs
+- [scripts/generate_1d_motivation_figure.py](scripts/generate_1d_motivation_figure.py) — 1-D range-only motivation figure
+- [scripts/run_model_order_comparison_64trials.py](scripts/run_model_order_comparison_64trials.py) — nominal 64-trial MDL vs expected-order comparison
+- [scripts/run_staged_submission.py](scripts/run_staged_submission.py) — staged long-run helper for follow-on experiments
+- [report/current_assessment.tex](report/current_assessment.tex) — report source
+- [results/submission](results/submission) — main submission output (64-trial FR1 bundle)
+- [results/analysis](results/analysis) — model-order comparison tables
+- [results/submission_nuisance](results/submission_nuisance) — 64-trial nuisance-strength sweep (MDL)
+- [results/submission_expected_order](results/submission_expected_order) — 64-trial nuisance-strength sweep (expected K=2)
 
-## Canonical Submission Snapshot
+## Running
 
-Saved bundle:
+### Full submission bundle rebuild
 
-- anchor: `fr1`
-- profile: `submission`
-- scenes: `open_aisle`, `intersection`, `rack_aisle`
-- trials per sweep point: `64`
-- public sweeps: `allocation_family`, `occupied_fraction`, `fragmentation`, `bandwidth_span`, `slow_time_span`, `range_separation`, `velocity_separation`, `angle_separation`
+```bash
+bash scripts/build_submission_bundle.sh
+PYTHONPATH=src .venv/bin/python scripts/plot_results_from_csv.py --input-root results/submission --clean-output
+```
 
-Nominal `Pjoint` from the saved submission bundle:
+### Follow-on analyses
 
-- `open_aisle`: FFT `0.719`, MUSIC `0.563`
-- `intersection`: FFT `0.156`, MUSIC `0.703`
-- `rack_aisle`: FFT `0.031`, MUSIC `0.000`
+```bash
+PYTHONPATH=src .venv/bin/python scripts/run_model_order_comparison_64trials.py
+PYTHONPATH=src .venv/bin/python scripts/run_staged_submission.py
+```
 
-Paired nominal interpretation:
-
-- `open_aisle`: FFT advantage is statistically supported
-- `intersection`: MUSIC advantage is statistically supported
-- `rack_aisle`: shared-failure region, not a meaningful nominal win for either method
-
-## Fast Iteration Workflow
-
-The full submission bundle still takes hours. The repo now supports much faster targeted runs.
-
-Important CLI options in [run_study.py](run_study.py):
-
-- `--sweeps`: run only selected sweep families
-- `--skip-pilot-only`: skip the pilot-only nominal diagnostic
-- `--skip-representative`: skip representative-trial artifacts
-- `--disable-fbss-ablation`: skip FBSS ablation runs
-- `--music-fixed-order`: force MUSIC to use a fixed model order
-- `--output-dir`: write debug runs outside the canonical results tree
-
-Recommended iteration style:
-
-- use submission-density search settings with low trial counts when debugging estimator behavior
-- avoid overwriting `results/submission`
-- treat `quick` as a smoke profile, not as the main scientific debug mode
-
-Example: targeted debug run on one scene and one sweep
+### Targeted debug run
 
 ```bash
 PYTHONPATH=src .venv/bin/python run_study.py \
@@ -122,55 +97,19 @@ PYTHONPATH=src .venv/bin/python run_study.py \
   --clean-outputs
 ```
 
-Example: fixed-order MUSIC diagnostic
-
-```bash
-PYTHONPATH=src .venv/bin/python run_study.py \
-  --profile submission \
-  --anchor fr1 \
-  --scene-class open_aisle \
-  --trials 8 \
-  --sweeps bandwidth_span \
-  --skip-pilot-only \
-  --skip-representative \
-  --disable-fbss-ablation \
-  --music-fixed-order 2 \
-  --output-dir results/debug_open_k2 \
-  --clean-outputs
-```
-
-## Rebuilding the Submission Bundle
-
-```bash
-bash scripts/build_submission_bundle.sh
-PYTHONPATH=src .venv/bin/python scripts/plot_results_from_csv.py --input-root results/submission --clean-output
-```
-
-## Report
-
-The current report source is [report/current_assessment.tex](report/current_assessment.tex).
-
-Build it locally with:
+### Build the report
 
 ```bash
 cd report
 latexmk -pdf -outdir=build current_assessment.tex
 ```
 
-Build artifacts are not treated as canonical repository content.
+## Limitations
 
-## Current Limits
-
-- staged MUSIC, not true joint 3-D MUSIC
-- fixed two-target study
-- scene classes are composite regimes, not clean one-factor sweeps
-- known-symbol sensing is still the main path
-- exploratory model-order and stage-diagnostic findings are not yet rolled into a revised thesis-grade report
-
-## Near-Term Direction
-
-The next technically justified steps are:
-
-1. treat known-target-count or capped-order MUSIC as a formal study variant for this fixed two-mover project
-2. use the new stage diagnostics to explain why `rack_aisle` fails even when model order is fixed
-3. add a controlled factor study so the final report is not only a regime map, but also has at least one cleaner causal result
+- Staged MUSIC, not true joint 3-D MUSIC
+- Fixed two-target study with three scene templates
+- Scene classes are composite regimes, not clean one-factor sweeps
+- FR1-only for the final submission snapshot
+- MDL model-order estimation fails systematically under masked covariance
+- Simulation-only: no hardware, channel estimation error, or communication-link feedback
+- Known-symbol sensing; `pilot_only` collapses for both methods

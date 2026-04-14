@@ -29,6 +29,16 @@ export SCENE_CLASS
 export JOBS
 export TRIALS
 export CLEAN_OUTPUTS
+export PYTHONUNBUFFERED=1
+export INCLUDE_PILOT_ONLY="${INCLUDE_PILOT_ONLY:-0}"
+export INCLUDE_REPRESENTATIVE="${INCLUDE_REPRESENTATIVE:-0}"
+export ENABLE_FBSS_ABLATION="${ENABLE_FBSS_ABLATION:-0}"
+
+echo "============================================================"
+echo "Build Submission Bundle"
+echo "scene_class=$SCENE_CLASS jobs=$JOBS trials=${TRIALS:-default} allow_smoke_submission=$ALLOW_SMOKE_SUBMISSION"
+echo "include_pilot_only=$INCLUDE_PILOT_ONLY include_representative=$INCLUDE_REPRESENTATIVE enable_fbss_ablation=$ENABLE_FBSS_ABLATION"
+echo "============================================================"
 
 "$ROOT_DIR/scripts/build_results_bundle.sh"
 
@@ -45,6 +55,9 @@ fi
   echo "submission_trial_floor=$SUBMISSION_DEFAULT_TRIALS"
   echo "submission_mode=$submission_mode"
   echo "allow_smoke_submission=$ALLOW_SMOKE_SUBMISSION"
+  echo "include_pilot_only=$INCLUDE_PILOT_ONLY"
+  echo "include_representative=$INCLUDE_REPRESENTATIVE"
+  echo "enable_fbss_ablation=$ENABLE_FBSS_ABLATION"
   echo "wrapper_command=bash scripts/build_submission_bundle.sh"
 } >> "$manifest_path"
 

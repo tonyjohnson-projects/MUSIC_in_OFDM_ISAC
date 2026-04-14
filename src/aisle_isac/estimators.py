@@ -280,6 +280,14 @@ def _embed_frequency_grid(cfg: StudyConfig, radar_cube: np.ndarray) -> np.ndarra
     return embedded
 
 
+def _cropped_positive_range_axis_m(cfg: StudyConfig) -> np.ndarray:
+    full_range_axis_m = fft_range_axis_m(cfg)
+    range_upper_m = sparse_unambiguous_range_m(cfg)
+    keep_count = int(np.searchsorted(full_range_axis_m, range_upper_m + 1.0e-12, side="right"))
+    keep_count = max(1, min(full_range_axis_m.size, keep_count))
+    return full_range_axis_m[:keep_count]
+
+
 def build_fft_cube(cfg: StudyConfig, radar_cube: np.ndarray) -> FftCubeResult:
     """Compute the coarse FFT cube over azimuth, range, and Doppler."""
 
@@ -304,12 +312,13 @@ def build_fft_cube(cfg: StudyConfig, radar_cube: np.ndarray) -> FftCubeResult:
 
     azimuth_cube = np.fft.fftshift(np.fft.fft(windowed_cube, n=n_azimuth, axis=0), axes=0)
     range_cube = np.fft.ifft(np.fft.ifftshift(azimuth_cube, axes=1), n=n_range, axis=1)
-    range_cube = range_cube[:, : n_range // 2, :]
+    positive_range_axis_m = _cropped_positive_range_axis_m(cfg)
+    range_cube = range_cube[:, : positive_range_axis_m.size, :]
     doppler_cube = np.fft.fftshift(np.fft.fft(range_cube, n=n_velocity, axis=2), axes=2)
     return FftCubeResult(
         power_cube=np.abs(doppler_cube) ** 2,
         azimuth_axis_deg=fft_azimuth_axis_deg(cfg),
-        range_axis_m=fft_range_axis_m(cfg),
+        range_axis_m=positive_range_axis_m,
         velocity_axis_mps=fft_velocity_axis_mps(cfg),
         embedding_mode="legacy",
     )

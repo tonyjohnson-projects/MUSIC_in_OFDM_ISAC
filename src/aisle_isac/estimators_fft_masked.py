@@ -7,7 +7,13 @@ import time
 import numpy as np
 
 from aisle_isac.config import StudyConfig
-from aisle_isac.estimators import FftCubeResult, FrontendArtifacts, extract_candidates_from_fft, fft_search_bounds
+from aisle_isac.estimators import (
+    FftCubeResult,
+    FrontendArtifacts,
+    _cropped_positive_range_axis_m,
+    extract_candidates_from_fft,
+    fft_search_bounds,
+)
 from aisle_isac.masked_observation import MaskedObservation, extract_known_symbol_cube
 from aisle_isac.ofdm import fft_azimuth_axis_deg, fft_range_axis_m, fft_velocity_axis_mps
 
@@ -45,7 +51,7 @@ def _fft_power_cube(
     azimuth_window: np.ndarray,
     frequency_window: np.ndarray,
     slow_time_window: np.ndarray,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     n_azimuth = cfg.runtime_profile.fft_angle_oversample * embedded_cube.shape[0]
     n_range = cfg.runtime_profile.fft_range_oversample * cfg.anchor.physical_subcarrier_count
     n_velocity = cfg.runtime_profile.fft_doppler_oversample * embedded_cube.shape[2]
@@ -57,9 +63,10 @@ def _fft_power_cube(
     )
     azimuth_cube = np.fft.fftshift(np.fft.fft(windowed_cube, n=n_azimuth, axis=0), axes=0)
     range_cube = np.fft.ifft(np.fft.ifftshift(azimuth_cube, axes=1), n=n_range, axis=1)
-    range_cube = range_cube[:, : n_range // 2, :]
+    positive_range_axis_m = _cropped_positive_range_axis_m(cfg)
+    range_cube = range_cube[:, : positive_range_axis_m.size, :]
     doppler_cube = np.fft.fftshift(np.fft.fft(range_cube, n=n_velocity, axis=2), axes=2)
-    return np.abs(doppler_cube) ** 2
+    return np.abs(doppler_cube) ** 2, positive_range_axis_m
 
 
 def _support_statistics(
@@ -111,7 +118,7 @@ def build_masked_fft_cube_from_cube(
         raise ValueError("known_cube uses a different symbol count than the active config")
 
     azimuth_window, frequency_window, slow_time_window = _fft_windows(cfg, known_cube.shape[0], known_cube.shape[2])
-    raw_power_cube = _fft_power_cube(
+    raw_power_cube, positive_range_axis_m = _fft_power_cube(
         cfg,
         _embed_frequency_grid(cfg, known_cube),
         azimuth_window,
@@ -132,7 +139,7 @@ def build_masked_fft_cube_from_cube(
     return FftCubeResult(
         power_cube=raw_power_cube * normalization_gain,
         azimuth_axis_deg=fft_azimuth_axis_deg(cfg),
-        range_axis_m=fft_range_axis_m(cfg),
+        range_axis_m=positive_range_axis_m,
         velocity_axis_mps=fft_velocity_axis_mps(cfg),
         embedding_mode=embedding_mode,
         support_energy=support_energy,

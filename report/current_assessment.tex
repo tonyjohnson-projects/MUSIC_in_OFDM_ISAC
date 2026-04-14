@@ -37,11 +37,11 @@
 \begin{abstract}
 This project studies the capability and robustness of MUSIC-based super-resolution in waveform-limited OFDM integrated sensing and communications (ISAC) environments. Motivated by earlier work showing clear MUSIC upside in a 1-D range-only study, this project asks whether that advantage survives into a 3-D staged pipeline operating on communications-limited waveforms with fragmented occupancy, structured clutter, and coherent multipath.
 
-The project compares a staged masked MUSIC estimator (with spatial FBSS and support-aware range/Doppler FBSS) against a fair masked FFT baseline with local refinement, both operating on the same de-embedded OFDM observation. The evidence bundle is a saved FR1 Monte Carlo study with 64 trials per sweep point across three indoor industrial scene classes and nine public sweep families including a controlled nuisance-strength study.
+The project compares a staged masked MUSIC estimator (with spatial FBSS and support-aware range/Doppler FBSS) against a fair masked FFT baseline with local refinement, both operating on the same de-embedded OFDM observation. The evidence consists of a saved FR1 Monte Carlo bundle with 64 trials per sweep point across three indoor industrial scene classes and nine public sweep families, plus saved 64-trial follow-on analyses for expected-order MUSIC and controlled nuisance-strength sweeps.
 
-The main findings are: (1)~MUSIC retains real super-resolution capability in favorable regimes, winning strongly in the intersection scene and in support-limited sweeps; (2)~model-order estimation via MDL is a primary failure mechanism, with oracle known-order MUSIC recovering substantial performance in two of three scenes; (3)~in clutter-dominated regimes such as rack aisle, the failure occurs at the azimuth-stage candidate selection level before model-order even matters, as nuisance scatterers capture the spatial subspace; (4)~the resolution-versus-robustness tradeoff is the central story, not a generic superiority claim.
+The main findings are: (1)~under the default MDL model-order path, MUSIC wins strongly only in the intersection scene, while open aisle favors the FFT baseline and rack aisle collapses; (2)~model-order estimation via MDL is a real bottleneck, because expected-order MUSIC recovers open-aisle performance to parity with FFT and strengthens the already-clear intersection win; (3)~in clutter-dominated regimes such as rack aisle, fixing the model order does not help, and the saved stage diagnostics show nuisance-aligned azimuth candidates capturing the search before later stages can recover; (4)~the central contribution is therefore a resolution-versus-robustness map rather than a generic superiority claim.
 
-The project therefore positions itself as a study of where and why MUSIC super-resolution helps in realistic OFDM ISAC, identifying the adaptations needed (model-order control, clutter awareness) and the regime boundaries beyond which subspace methods lose their advantage.
+The project thus positions itself as a regime-boundary study of where and why MUSIC super-resolution helps in realistic OFDM ISAC, identifying the roles of model-order control and clutter sensitivity in determining whether the earlier 1-D upside survives in 3-D staged operation.
 \end{abstract}
 
 \section{Introduction and Motivation}
@@ -102,7 +102,7 @@ The starting point for this project is a clean 1-D range-only comparison. Figure
 
 In this clean setting, MUSIC's super-resolution advantage is unambiguous: perfect resolution at sub-Rayleigh separation where FFT produces a single merged peak. The project question is what happens to this advantage under waveform limitation.
 
-The novelty claim of this report is therefore intentionally narrow. It is not proposing a new waveform, a new FBSS theorem, or a new joint estimator. Instead, it asks whether a staged, support-aware masked MUSIC pipeline still provides value once sensing is forced onto a communications-style OFDM resource grid with fragmented support, limited symbol knowledge, and structured nuisance multipath. The distinction between known-symbol sensing and pilot-limited sensing is also motivated by integrated communication-and-sensing receiver literature that uses pilot structure explicitly rather than assuming every transmitted symbol is known \cite{mousaei2017}. In that context, the report's pilot-only mode should be interpreted as a diagnostic for the current receiver path, not as a general statement about pilot-assisted OFDM sensing.
+The novelty claim of this report is therefore intentionally narrow. It is not proposing a new waveform, a new FBSS theorem, or a new joint estimator. Instead, it asks whether a staged, support-aware masked MUSIC pipeline still provides value once sensing is forced onto a communications-style OFDM resource grid with fragmented support and structured nuisance multipath. Limited-symbol-knowledge sensing remains an important future extension, but the final claim set here is anchored to known-symbol sensing so that the super-resolution mechanisms are not conflated with receiver-side symbol-recovery failure.
 
 \section{Signal Model and Mathematical Background}
 
@@ -193,20 +193,19 @@ The active MUSIC method is staged rather than truly joint. It performs a dense a
 
 \subsection{Submission Bundle Used in This Report}
 
-All quantitative claims in this report come from the saved submission bundle in the repository results tree. No Monte Carlo sweeps are rerun here. Tables and figures are derived from the saved CSV artifacts and the current code path.
+All headline comparison claims in this report come from the saved submission bundle in the repository results tree. The report also uses saved follow-on 64-trial outputs for the expected-order and nuisance-strength diagnostics. Tables and figures are derived from CSV artifacts already written to disk.
 
 The submission bundle used in the report has the following scope:
 \begin{itemize}
   \item FR1 anchor only,
   \item 64 trials per sweep point,
   \item 3 scene classes,
-  \item 8 public sweep families,
-  \item 37 sweep points per scene,
-  \item a nominal point and a pilot-only nominal diagnostic for each scene,
+  \item 9 public sweep families,
+  \item 42 sweep points per scene, plus a nominal point,
   \item per-trial CSV export for auditability.
 \end{itemize}
 
-The saved build manifest records the execution command used to generate the bundle, and the bundle-generation path now also records the git commit hash for reproducibility.
+The default final bundle is intentionally lean: it keeps the headline known-symbol comparison and removes pilot-only, representative-trial, and FBSS-ablation artifacts from the canonical submission path. Those diagnostics were useful during development, but they are not required for the final thesis claim set.
 
 \subsection{Waveform, Array, and Nominal Resource Mask}
 
@@ -234,7 +233,6 @@ Nominal velocity resolution & 5.353 m/s \\
 Nominal azimuth resolution & 6.769 deg \\
 Nominal allocation family & Fragmented scheduled PRB \\
 Nominal occupied fraction & 0.500 \\
-Nominal pilot fraction within occupied REs & 0.0625 \\
 Nominal contiguous bandwidth-span fraction & 1.000 \\
 Nominal slow-time-span fraction & 1.000 \\
 Nominal fragmentation index & 0.0316 \\
@@ -307,20 +305,6 @@ The report centers on two headline methods:
 \end{enumerate}
 
 This is a fair comparison in the sense that both methods use the same de-embedded masked observation, and the FFT baseline is not left as a raw coarse detector. The addition of local refinement to the FFT path is one of the reasons the final result is more balanced than the earlier optimistic picture.
-
-\subsection{Pilot-Only Diagnostic}
-
-The study also includes a pilot-only diagnostic. In this mode, only pilot REs are treated as known and all non-pilot data REs are zero-filled in the recovered sensing cube. This is therefore a \emph{receiver diagnostic} for the current processing path, not a full unknown-data sensing receiver.
-
-\subsection{FBSS Ablation}
-
-To understand how much the result depends on support-aware smoothing, the bundle also logs four MUSIC variants:
-\begin{itemize}
-  \item spatial FBSS only,
-  \item spatial + range FBSS,
-  \item spatial + Doppler FBSS,
-  \item spatial + range + Doppler FBSS.
-\end{itemize}
 
 \subsection{Metrics}
 
@@ -419,8 +403,8 @@ Figure~\ref{fig:trial-delta} shows the same comparison in continuous form using 
 
 The paired-trial picture strengthens the nominal conclusion:
 \begin{itemize}
-  \item in open aisle, only 25\% of trials favor MUSIC on the RMSE delta;
-  \item in intersection, about 70\% of trials favor MUSIC;
+  \item in open aisle, only about 30\% of trials favor MUSIC on the RMSE delta;
+  \item in intersection, about 72\% of trials favor MUSIC;
   \item in rack aisle, the comparison is dominated by shared failure rather than by a meaningful win region for either method.
 \end{itemize}
 
@@ -437,29 +421,14 @@ Because the nominal headline methods share the same trial spawn keys, the submis
 \toprule
 Scene & McNemar $p$ & RMSE sign-test $p$ & Mean RMSE delta & Interpretation \\
 \midrule
-Open aisle & 0.041 & $7.7 \times 10^{-5}$ & $-0.125$ & FFT advantage supported \\
-Intersection & $5.8 \times 10^{-11}$ & $2.6 \times 10^{-4}$ & $+0.459$ & MUSIC advantage supported \\
-Rack aisle & 0.500 & 0.791 & $-0.005$ & No clear nominal winner \\
+Open aisle & 0.041 & $1.6 \times 10^{-3}$ & $-0.124$ & FFT advantage supported \\
+Intersection & $5.8 \times 10^{-11}$ & $8.8 \times 10^{-5}$ & $+0.459$ & MUSIC advantage supported \\
+Rack aisle & 0.500 & 1.000 & $-0.005$ & No clear nominal winner \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 These tests do not change the story, but they make it more defensible. The nominal open-aisle loss and nominal intersection win are not just visually separated averages; they remain supported under paired nominal tests. Rack aisle does not support a stronger claim than ``both methods mostly fail here.''
-
-\subsection{Representative Positive Case}
-
-Figure~\ref{fig:intersection-case} shows one deterministic representative trial from the nominal intersection scene.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\textwidth]{story_intersection_resolution_from_csv.png}
-\caption{Representative deterministic trial from the nominal intersection scene. This figure is illustrative rather than distributional: it shows the failure mode that appears repeatedly in the saved bundle, namely FFT duplicating the stronger mover while staged MUSIC resolves both movers.}
-\label{fig:intersection-case}
-\end{figure}
-
-The representative geometry makes the nominal intersection win easier to interpret. The two truth movers differ in target type and strength, the azimuth split is the widest of the three scenes, and the clutter geometry produces a case in which the FFT baseline tends to duplicate the stronger mover instead of separating both movers. In the representative trial, FFT places both detections near the faster mover, while MUSIC places one detection near each truth target.
-
-This does not by itself prove the nominal conclusion; the paired-trial and summary statistics do that. The value of the representative figure is explanatory: it shows a concrete positive regime rather than only reporting aggregate numbers.
 
 \subsection{Representative Negative Cases}
 
@@ -496,47 +465,17 @@ The project becomes more interesting when it is interpreted as a regime map rath
 Three sweep-level patterns matter:
 \begin{enumerate}
   \item \textbf{Open aisle:} MUSIC has no strong-win points at all in the 22 support-limited sweep points, and only one strong-win point in the 15 axis-isolated separation points. After FFT refinement, this is mostly an FFT-favorable regime.
-  \item \textbf{Intersection:} MUSIC wins broadly in the support-limited sweeps, with strong positive cells in allocation, occupancy, fragmentation, bandwidth, and slow-time span. Its axis-specific gain is concentrated in range separation rather than in velocity or angle separation.
-  \item \textbf{Rack aisle:} MUSIC does not help in the 22 support-limited sweep points and does not rescue the nominal point. Its positive cells are concentrated in easier separation sweeps, especially range and velocity separation and, more weakly, at the widest angle splits.
+  \item \textbf{Intersection:} MUSIC wins broadly in the 22 support-limited sweep points, with 15 strong-win points and a positive mean delta in every support family. Its axis-specific advantage is much narrower: it helps on range separation, but not on the isolated velocity and angle sweeps.
+  \item \textbf{Rack aisle:} MUSIC does not help in the 22 support-limited sweep points and does not rescue the nominal point. Its positive cells are concentrated in easier separation sweeps, especially range and velocity separation, which means the staged pipeline can still benefit when the scene is made artificially easier.
 \end{enumerate}
 
 The split regime map is the most important high-level result of the project. It says that MUSIC is neither universally useful nor universally useless under waveform limitation. Instead, its gains cluster in specific scene and support regimes, and the support-limited and axis-isolated sweep families must be interpreted separately.
-
-\subsection{Pilot-Only Diagnostic}
-
-Figure~\ref{fig:pilot-only} compares nominal known-symbol performance with the pilot-only diagnostic.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\textwidth]{story_pilot_only_collapse_from_csv.png}
-\caption{Pilot-only diagnostic at the nominal fragmented-PRB point. Under the current receiver path, both methods collapse to zero nominal joint-resolution probability when only pilot REs are treated as known.}
-\label{fig:pilot-only}
-\end{figure}
-
-The result is severe:
-\begin{itemize}
-  \item all three scenes yield $\pjoint = 0$ for FFT under pilot-only,
-  \item all three scenes yield $\pjoint = 0$ for MUSIC under pilot-only.
-\end{itemize}
-
-This is an honest and important negative result. At the same time, it must be framed correctly. At the nominal fragmented-PRB point, only 50\% of REs are occupied and only 6.25\% of those occupied REs are pilots, so the current pilot-only path treats only about 3.125\% of the full grid as known before zero-filling the rest. The project is therefore \textbf{not} proving that pilot-only sensing is fundamentally impossible for OFDM ISAC. It is showing that the current zero-filled de-embedding path has no useful nominal performance under this extremely sparse pilot-only knowledge pattern.
-
-\subsection{FBSS Ablation}
-
-The FBSS ablation is useful mainly because it constrains how the result should be interpreted. In the saved nominal results:
-\begin{itemize}
-  \item adding range and Doppler FBSS beyond spatial-only changes nominal $\pjoint$ by at most 0.016 in open aisle,
-  \item it changes nothing at the nominal point in intersection,
-  \item and it changes nothing at the nominal point in rack aisle.
-\end{itemize}
-
-So the submission outcome is not hiding a large untapped gain from a different FBSS toggle. The active headline behavior is dominated by the broader scene and support regime, not by a fragile ablation choice.
 
 \subsection{Model-Order Diagnosis}
 
 The submission-bundle MDL estimates consistently overestimate the true source count of two. Mean estimated orders of 4--6 across scenes suggest that the masked covariance structure misleads the MDL criterion. To isolate this effect, the project includes an expected-order MUSIC variant that fixes $K=2$.
 
-Table~\ref{tab:model-order} summarizes the nominal comparison from confirmation runs at submission-density settings.
+Table~\ref{tab:model-order} summarizes the saved 64-trial nominal comparison.
 
 \begin{table}[H]
 \centering
@@ -547,28 +486,63 @@ Table~\ref{tab:model-order} summarizes the nominal comparison from confirmation 
 \toprule
 Scene & MDL MUSIC & Expected-order MUSIC & FFT baseline \\
 \midrule
-Open aisle & 0.563 & 0.750 & 0.719 \\
-Intersection & 0.703 & 0.750 & 0.156 \\
+Open aisle & 0.563 & 0.719 & 0.719 \\
+Intersection & 0.703 & 0.844 & 0.156 \\
 Rack aisle & 0.000 & 0.000 & 0.031 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The result is decisive for two of three scenes. In open aisle, the original nominal loss to FFT ($\pjoint = 0.563$ vs $0.719$) was largely a model-order artifact: expected-order MUSIC recovers to $0.750$, matching or exceeding FFT. In intersection, expected-order MUSIC strengthens an already-clear win. In rack aisle, fixing $K=2$ does not help at all, confirming that the failure mechanism is different.
+The result is decisive for two of three scenes. In open aisle, the original nominal loss to FFT ($\pjoint = 0.563$ vs $0.719$) was largely a model-order artifact: expected-order MUSIC recovers to exact parity with the FFT baseline. In intersection, expected-order MUSIC strengthens an already-clear win. In rack aisle, fixing $K=2$ does not help at all, confirming that the failure mechanism is different.
 
 \subsection{Azimuth-Stage Failure Analysis}
 
-The stage diagnostics logged during the model-order experiments reveal why rack aisle resists the fix. In rack-aisle trials with expected-order MUSIC, the azimuth-stage MUSIC pseudospectrum still places a persistent ghost candidate near $-21.7^\circ$, which is close to the left-rack nuisance scatterer at $-24^\circ$. The true second target near $+5.2^\circ$ never appears in the azimuth candidate pool. This means the failure is at the spatial subspace level: nuisance scatterers with gains near $-12$~dB (comparable to target strength at the scene SNR) capture the signal subspace before the staged search begins.
+The saved stage diagnostics in the nominal rack-aisle bundle show why the scene resists the fix. In failed rack-aisle trials, the azimuth candidate list repeatedly contains a nuisance-aligned branch near $-21.7^\circ$, close to the left-rack clutter at $-24^\circ$, while the true second mover near $+5^\circ$ is intermittently absent from the useful candidate set. The final detections then either duplicate the easier mover or jump to the nuisance branch.
 
-This is a structurally different failure from model-order overestimation. It explains why the rack-aisle regime boundary is sharp: once clutter gains cross the threshold where nuisance paths dominate the leading eigenvalues, MUSIC cannot recover regardless of model order.
+Figure~\ref{fig:rack-diagnostic} visualises this directly. The left panel histograms the azimuth candidates produced across all 64 nominal rack-aisle trials. A persistent nuisance-aligned branch near $-21.7^\circ$---close to the left-rack clutter at $-24^\circ$---appears in every trial, while candidates near the two true movers ($\approx -1^\circ$ and $+5^\circ$) each appear in only half. The right panel shows where the final detections actually land: 50 of 128 detection slots (39\%) are captured by the nuisance branch, while the true movers receive only 36 and 29 respectively.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{story_rack_aisle_diagnostic_from_csv.png}
+\caption{Rack-aisle azimuth-stage failure diagnostic. Left: histogram of azimuth candidates across 64 nominal trials, with truth target azimuths (blue dashed/solid) and clutter/multipath angles (red dotted/dash-dot). The persistent candidate near $-21.7^\circ$ aligns with the left-rack clutter at $-24^\circ$ and appears in every trial. Right: distribution of final detection azimuths showing that the nuisance branch captures 39\% of outputs, confirming spatial subspace capture as the failure mechanism.}
+\label{fig:rack-diagnostic}
+\end{figure}
+
+Combined with the expected-order result staying at $\pjoint = 0$, this indicates that rack aisle is not primarily a model-order problem. The more plausible interpretation is a clutter-dominated azimuth-stage failure: nuisance scatterers capture the spatial subspace early enough that later range/Doppler processing cannot recover the missing second mover.
 
 \subsection{Controlled Nuisance-Strength Study}
 
-To verify this mechanism causally, the project includes a nuisance-gain-offset sweep that shifts all nuisance scatterer gains uniformly while holding the scene geometry, target placement, and nominal separations fixed. This is the controlled single-factor study that complements the composite-regime scene comparisons.
+To test the clutter explanation more directly, the project includes a nuisance-gain-offset sweep that shifts all nuisance scatterer gains uniformly while holding the scene geometry, target placement, and nominal separations fixed. The saved sweep evaluates offsets of $-6$, $-3$, $0$, $+3$, and $+6$~dB relative to the scene defaults.
 
-The sweep tests offsets from $-9$~dB (attenuated clutter) to $+9$~dB (amplified clutter) relative to the scene defaults. In favorable-regime scenes, MUSIC performance is expected to degrade gracefully as clutter strengthens. In rack aisle, performance is expected to remain at zero throughout because even the nominal clutter is already dominant.
+The cleaner version of this test is the expected-order sweep, because it removes the MDL confound. Table~\ref{tab:nuisance-expected} summarizes the saved expected-order $\pjoint$ values.
 
-This sweep produces the strongest causal evidence in the project: it shows whether the regime boundary between MUSIC-favorable and MUSIC-unfavorable operation is driven by clutter strength rather than by the composite scene differences that confound the nominal comparison.
+\begin{table}[H]
+\centering
+\small
+\caption{Expected-order nuisance sweep: joint-resolution probability $\pjoint$ under uniform nuisance-gain offsets.}
+\label{tab:nuisance-expected}
+\begin{tabular}{llccccc}
+\toprule
+Scene & Method & $-6$ dB & $-3$ dB & $0$ dB & $+3$ dB & $+6$ dB \\
+\midrule
+Open aisle & FFT + local refinement & 0.719 & 0.766 & 0.750 & 0.688 & 0.672 \\
+Open aisle & Expected-order MUSIC & 0.734 & 0.703 & 0.766 & 0.484 & 0.406 \\
+Intersection & FFT + local refinement & 0.125 & 0.234 & 0.172 & 0.219 & 0.125 \\
+Intersection & Expected-order MUSIC & 0.828 & 0.781 & 0.797 & 0.797 & 0.781 \\
+Rack aisle & FFT + local refinement & 0.047 & 0.047 & 0.031 & 0.000 & 0.000 \\
+Rack aisle & Expected-order MUSIC & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This produces the clearest regime-boundary evidence in the project:
+\begin{itemize}
+  \item \textbf{Open aisle:} once model order is fixed, MUSIC is competitive or slightly better than FFT at low-to-moderate nuisance levels, but it degrades sharply when clutter is amplified.
+  \item \textbf{Intersection:} expected-order MUSIC remains strong across the entire tested nuisance range and keeps a large margin over FFT even at $+6$~dB.
+  \item \textbf{Rack aisle:} MUSIC remains at zero throughout, which supports the interpretation that this scene is already beyond the clutter tolerance of the staged pipeline.
+\end{itemize}
+
+The corresponding MDL nuisance sweep shows a similar qualitative collapse pattern in intersection and no rescue in rack aisle, but the expected-order table above is the more defensible causal view because it isolates clutter effects from model-order error.
 
 \section{Discussion}
 
@@ -576,10 +550,10 @@ This sweep produces the strongest causal evidence in the project: it shows wheth
 
 The strongest defensible claim is:
 \begin{quote}
-MUSIC has real super-resolution capability in realistic OFDM ISAC, but its value is conditional on two factors: (1)~the subspace dimensioning must be correct or at least controlled, because MDL-based model-order estimation fails systematically under masked covariance; and (2)~the scene must not be dominated by strong nuisance scatterers that capture the spatial subspace before the staged search begins.
+MUSIC has real super-resolution capability in realistic OFDM ISAC, but its value is regime-dependent. Under the default MDL path it wins strongly only in intersection; with correct model order it also becomes competitive in open aisle; and in clutter-dominated rack aisle it fails regardless of model order.
 \end{quote}
 
-This is a stronger and more useful result than a simple ``MUSIC wins'' or ``MUSIC loses'' claim. It identifies \emph{why} the super-resolution upside seen in the earlier 1-D range-only study does not always survive into realistic 3-D operation, and it points to specific adaptations (model-order control, clutter-aware subspace estimation) that could recover the advantage in more regimes.
+This is a stronger and more useful result than a simple ``MUSIC wins'' or ``MUSIC loses'' claim. It identifies \emph{why} the super-resolution upside seen in the earlier 1-D range-only study does not always survive into realistic 3-D operation, and it points to specific adaptations and limits: model-order control can recover part of the lost capability, while nuisance-dominated spatial subspaces define a harder regime boundary.
 
 \subsection{What Needs Honest Framing}
 
@@ -587,7 +561,7 @@ Two framing points matter.
 
 First, the scenes should not be described as if target coherence were the only or even the dominant controlled difference. They are composite regimes that differ in SNR, nominal separations, target pair, target power imbalance, clutter count, and multipath layout. Because the saved empirical coherence overlaps strongly across scenes in Figure~\ref{fig:coherence-overlap}, the report avoids attributing the scene results to coherence alone.
 
-Second, the pilot-only diagnostic should be presented as a limitation of the current receiver path, not as a universal theorem about pilot-only OFDM sensing.
+Second, expected-order MUSIC should be framed correctly. It is an oracle diagnostic for this fixed two-target study, not a deployable model-order solution. Its value is that it reveals what performance is available once subspace dimensioning is no longer the dominant failure mode.
 
 These points narrow the mechanism claim, but they do \textbf{not} invalidate the empirical comparison. The saved CSVs still support the estimator comparison reported here.
 
@@ -602,10 +576,10 @@ The result is useful to a 6G-oriented audience for three reasons:
 
 The practical message is not ``deploy MUSIC everywhere.'' It is closer to:
 \begin{quote}
-MUSIC is a conditional tool for communications-limited sensing. It is worth considering where scene geometry and support conditions create a genuine super-resolution need and where the covariance information remains usable. It is not a default replacement for a strong FFT baseline.
+MUSIC is a conditional tool for communications-limited sensing. It is worth considering where scene geometry, clutter strength, and support conditions create both a genuine super-resolution need and a usable covariance structure. It is not a default replacement for a strong FFT baseline.
 \end{quote}
 
-The saved runtime summary also sharpens the engineering interpretation. At the nominal FR1 point, staged MUSIC adds only about 0.20--0.24~s of total runtime per sweep point relative to FFT, raising total point runtime from roughly 2.43~s to 2.63~s, or about 8--10\%. Because both methods share the same masked front end and much of the preprocessing cost, the main objection to MUSIC in this study is not runtime overhead alone. The more important question is whether a given operating regime justifies even that modest extra cost.
+The saved runtime summary also sharpens the engineering interpretation. At the nominal FR1 point, staged MUSIC adds about 0.19--0.26~s of total runtime per sweep point relative to FFT, raising total point runtime from roughly 0.76~s to 0.96--0.99~s, or about 25--30\%. Because both methods share the same masked front end and much of the preprocessing cost, the main objection to MUSIC in this study is still not runtime alone. The more important question is whether a given operating regime justifies that extra cost.
 
 \subsection{Relation to Fundamental Bounds}
 
@@ -625,8 +599,7 @@ Several limitations remain and should be stated plainly:
   \item The study is limited to two movers and a small number of scene templates.
   \item The scene classes are composite regimes rather than a clean one-factor coherence sweep.
   \item The bundle is FR1-only for the final submission snapshot.
-  \item The pilot-only path is a harsh diagnostic, not a complete unknown-data receiver.
-  \item MDL-based model-order estimation fails systematically under masked covariance, consistently overestimating the source count. The expected-order variant demonstrates this is correctable, but a practical system would need a robust model-order method adapted to the masked setting.
+  \item MDL-based model-order estimation fails systematically under masked covariance, consistently overestimating the source count. The expected-order variant shows what is recoverable when that error is removed, but a practical system would still need a robust masked-covariance model-order method.
   \item The study is simulation-only and does not include hardware, channel estimation error, or communication-link feedback constraints.
 \end{itemize}
 
@@ -636,10 +609,10 @@ This project set out to determine whether the super-resolution upside of MUSIC, 
 
 The answer is conditional but well-characterized:
 \begin{itemize}
-  \item MUSIC retains genuine super-resolution capability in favorable regimes, decisively outperforming the FFT baseline in intersection and in multiple support-limited sweeps.
-  \item The original nominal open-aisle loss was substantially a model-order artifact. Expected-order MUSIC recovers to match or exceed the FFT baseline, demonstrating that the underlying super-resolution machinery is intact once subspace dimensioning is controlled.
-  \item Rack aisle represents a structurally different failure: nuisance scatterers capture the spatial subspace at the azimuth stage, and no model-order fix can recover performance. The controlled nuisance-strength sweep provides causal evidence for this regime boundary.
-  \item The pilot-only diagnostic confirms that the current zero-fill receiver path does not support useful sensing under extremely sparse pilot knowledge.
+  \item Under the default MDL path, MUSIC retains genuine super-resolution capability only in favorable regimes, decisively outperforming the FFT baseline in intersection while losing in open aisle and collapsing in rack aisle.
+  \item The original nominal open-aisle loss was substantially a model-order artifact. Expected-order MUSIC recovers to parity with FFT there and strengthens the already-clear intersection win, demonstrating that the underlying super-resolution machinery is still present once subspace dimensioning is controlled.
+  \item Rack aisle represents a structurally different failure: nuisance-aligned azimuth candidates dominate the staged search, and no model-order fix recovers performance.
+  \item The expected-order nuisance sweep reveals three distinct regimes: open aisle is conditionally favorable only before clutter becomes too strong, intersection remains robust across the tested nuisance range, and rack aisle stays beyond the useful operating boundary throughout.
 \end{itemize}
 
 The central contribution is therefore a resolution-versus-robustness map for MUSIC in realistic OFDM ISAC. The project identifies two key failure mechanisms (model-order overestimation under masked covariance, and nuisance-dominated spatial subspace capture) and shows that the first is correctable while the second defines a hard regime boundary.
@@ -699,7 +672,7 @@ Table~\ref{tab:gate-sensitivity} recomputes nominal joint-resolution probabiliti
 Scene & Method & 0.25 cell & 0.35 cell & 0.45 cell & 0.50 cell \\
 \midrule
 Open aisle & FFT + local refinement & 0.656 & 0.719 & 0.766 & 0.781 \\
-Open aisle & Staged MUSIC + FBSS & 0.516 & 0.562 & 0.578 & 0.578 \\
+Open aisle & Staged MUSIC + FBSS & 0.531 & 0.562 & 0.578 & 0.578 \\
 Intersection & FFT + local refinement & 0.125 & 0.156 & 0.219 & 0.219 \\
 Intersection & Staged MUSIC + FBSS & 0.641 & 0.703 & 0.750 & 0.781 \\
 Rack aisle & FFT + local refinement & 0.031 & 0.031 & 0.031 & 0.047 \\
