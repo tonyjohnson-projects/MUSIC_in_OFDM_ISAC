@@ -108,7 +108,7 @@ The novelty claim of this report is therefore intentionally narrow. It is not pr
 
 \subsection{Waveform-Limited OFDM Observation Model}
 
-Let $h$ index the virtual horizontal channel, $k$ the subcarrier, and $n$ the OFDM symbol index. The masked communications-limited observation can be written schematically as
+Let $h$ index the virtual horizontal channel, $k$ the subcarrier, and $n$ the slot-spaced slow-time snapshot index. The masked communications-limited observation can be written schematically as
 \begin{equation}
 y_{h,k,n}
 =
@@ -126,11 +126,11 @@ s_p[n]
 where
 \begin{itemize}
   \item $m_{k,n} \in \{0,1\}$ is the resource-support mask,
-  \item $x_{k,n}$ is the transmitted OFDM symbol,
+  \item $x_{k,n}$ is the transmitted OFDM symbol on that resource element,
   \item $\alpha_p$ is the path gain,
   \item $\theta_p$, $\tau_p$, and $\nu_p$ are azimuth, delay, and Doppler,
   \item $a_h(\theta_p)$ is the spatial steering term,
-  \item $s_p[n]$ is the slow-time source process for path $p$,
+  \item $s_p[n]$ is the slow-time source process for path $p$, sampled once per slow-time snapshot,
   \item and $w_{h,k,n}$ is complex receiver noise.
 \end{itemize}
 
@@ -158,7 +158,7 @@ This is the core object used by both headline estimators in the project. Unlike 
 Three OFDM limitations matter immediately:
 \begin{enumerate}
   \item \textbf{Fragmented frequency support.} Missing subcarriers reduce effective bandwidth and disrupt the covariance structure used by both FFT and subspace methods.
-  \item \textbf{Fragmented slow-time support.} Missing OFDM symbols reduce coherent processing interval and Doppler stability.
+  \item \textbf{Fragmented slow-time support.} Missing slow-time snapshots (here sampled once per slot) reduce coherent processing interval and Doppler stability.
   \item \textbf{Limited transmitter knowledge.} If only pilot symbols are known, then the sensing receiver cannot cleanly de-embed data-bearing resource elements without a more complete communication receiver.
 \end{enumerate}
 
@@ -226,6 +226,7 @@ Subcarrier spacing & 30 kHz \\
 Physical OFDM subcarriers & 3333 \\
 Simulated subcarriers used in the study & 96 \\
 Snapshots in the balanced CPI & 16 \\
+Slow-time snapshot spacing & 0.5 ms (one 30 kHz slot) \\
 Coherent processing interval & 8 ms \\
 Effective horizontal channels & 16 \\
 Nominal range resolution & 1.499 m \\
@@ -240,7 +241,7 @@ Nominal fragmentation index & 0.0316 \\
 \end{tabular}
 \end{table}
 
-The nominal fragmented PRB grid is important. Even though only half of the resource elements are occupied, the occupied support spans the full simulated bandwidth and the full slow-time interval. This means the nominal point is not a ``small bandwidth'' or ``short CPI'' point; it is a \emph{fragmented full-span} point.
+The nominal fragmented PRB grid is important. Even though only half of the resource elements are occupied, the occupied support spans the full simulated bandwidth and the full slow-time interval. In the implementation, the slow-time axis is sampled once per 30~kHz NR slot, so 16 snapshots correspond to an 8~ms CPI. This means the nominal point is not a ``small bandwidth'' or ``short CPI'' point; it is a \emph{fragmented full-span} point.
 
 \subsection{Scenes and What Actually Separates Them}
 
@@ -542,7 +543,7 @@ This produces the clearest regime-boundary evidence in the project:
   \item \textbf{Rack aisle:} MUSIC remains at zero throughout, which supports the interpretation that this scene is already beyond the clutter tolerance of the staged pipeline.
 \end{itemize}
 
-The corresponding MDL nuisance sweep shows a similar qualitative collapse pattern in intersection and no rescue in rack aisle, but the expected-order table above is the more defensible causal view because it isolates clutter effects from model-order error.
+The corresponding MDL nuisance sweep is useful mainly as a contrast case. In intersection, the MDL path deteriorates sharply as nuisance strength increases and falls to $\pjoint = 0.031$ at $+6$~dB, whereas the expected-order path stays strong at $\pjoint = 0.781$ at the same point. Rack aisle still shows no rescue under either model-order mode. The expected-order table above is therefore the more defensible causal view because it isolates clutter effects from model-order error.
 
 \section{Discussion}
 
@@ -583,7 +584,7 @@ The saved runtime summary also sharpens the engineering interpretation. At the n
 
 \subsection{Relation to Fundamental Bounds}
 
-This project does not compute the Cram\'{e}r-Rao bound (CRB) for the masked observation model. The standard CRB for MUSIC-based direction-of-arrival estimation under known model order is well-established \cite{stoica1990}, and MUSIC is known to approach CRB efficiency asymptotically in the uncorrelated, full-support case. However, two features of this problem complicate a direct CRB computation:
+This project does not compute the Cram\'{e}r-Rao bound (CRB) for the masked observation model. The standard CRB for MUSIC-based direction-of-arrival estimation under known model order is well-established \cite{stoica1989}, and MUSIC is known to approach CRB efficiency asymptotically in the uncorrelated, full-support case. However, two features of this problem complicate a direct CRB computation:
 
 First, the fragmented support mask $m_{k,n}$ creates a non-standard Fisher information structure. The observation likelihood depends on which resource elements are known, and the effective Fisher information matrix is a function of the support pattern, not just the array geometry and SNR. Computing the CRB for each sweep point would require evaluating the Fisher information under the specific mask realization, which is tractable but beyond the scope of this project.
 
@@ -723,7 +724,7 @@ S.~U.~Pillai and B.~H.~Kwon,
 vol.~37, no.~1, pp.~8--15, Jan.~1989.
 doi: \url{https://doi.org/10.1109/29.17496}
 
-\bibitem{stoica1990}
+\bibitem{stoica1989}
 P.~Stoica and A.~Nehorai,
 ``MUSIC, Maximum Likelihood, and Cramer-Rao Bound,''
 \emph{IEEE Transactions on Acoustics, Speech, and Signal Processing},
