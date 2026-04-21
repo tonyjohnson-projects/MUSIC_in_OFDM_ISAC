@@ -37,9 +37,9 @@
 \begin{abstract}
 This project studies the capability and robustness of MUSIC-based super-resolution in waveform-limited OFDM integrated sensing and communications (ISAC) environments. Motivated by earlier work showing clear MUSIC upside in a 1-D range-only study, this project asks whether that advantage survives into a 3-D staged pipeline operating on communications-limited waveforms with fragmented occupancy, structured clutter, and coherent multipath.
 
-The project compares a staged masked MUSIC estimator (with spatial FBSS and support-aware range/Doppler FBSS) against a fair masked FFT baseline with local refinement, both operating on the same de-embedded OFDM observation. The evidence consists of a saved FR1 Monte Carlo bundle with 64 trials per sweep point across three indoor industrial scene classes and nine public sweep families, plus saved 64-trial follow-on analyses for expected-order MUSIC and controlled nuisance-strength sweeps.
+The project compares a staged masked MUSIC estimator (with spatial FBSS and support-aware range/Doppler FBSS) against a fair masked FFT baseline with local refinement, both operating on the same de-embedded OFDM observation. The evidence consists of a saved FR1 Monte Carlo bundle with 64 trials per sweep point across three indoor industrial scene classes and nine public sweep families, plus saved 64-trial follow-on analyses for expected-order MUSIC, a nominal eigengap model-order check, and controlled nuisance-strength sweeps.
 
-The main findings are: (1)~under the default MDL model-order path, MUSIC wins strongly only in the intersection scene, while open aisle favors the FFT baseline and rack aisle collapses; (2)~model-order estimation via MDL is a real bottleneck, because expected-order MUSIC recovers open-aisle performance to parity with FFT and strengthens the already-clear intersection win; (3)~in clutter-dominated regimes such as rack aisle, fixing the model order does not help, and the saved stage diagnostics show nuisance-aligned azimuth candidates capturing the search before later stages can recover; (4)~the central contribution is therefore a resolution-versus-robustness map rather than a generic superiority claim.
+The main findings are: (1)~under the default MDL model-order path, MUSIC wins strongly only in the intersection scene, while open aisle favors the FFT baseline and rack aisle collapses; (2)~model-order estimation via MDL is a real bottleneck, because expected-order MUSIC recovers open-aisle performance to parity with FFT and strengthens the already-clear intersection win, while a nominal eigengap selector closes much of the same gap without rescuing the clutter-dominated case; (3)~in clutter-dominated regimes such as rack aisle, fixing the model order does not help, and the saved stage diagnostics show nuisance-aligned azimuth candidates capturing the search before later stages can recover; (4)~the central contribution is therefore a resolution-versus-robustness map rather than a generic superiority claim.
 
 The project thus positions itself as a regime-boundary study of where and why MUSIC super-resolution helps in realistic OFDM ISAC, identifying the roles of model-order control and clutter sensitivity in determining whether the earlier 1-D upside survives in 3-D staged operation.
 \end{abstract}
@@ -474,27 +474,29 @@ The split regime map is the most important high-level result of the project. It 
 
 \subsection{Model-Order Diagnosis}
 
-The submission-bundle MDL estimates consistently overestimate the true source count of two. Mean estimated orders of 4--6 across scenes suggest that the masked covariance structure misleads the MDL criterion. To isolate this effect, the project includes an expected-order MUSIC variant that fixes $K=2$.
+The submission-bundle MDL estimates consistently overestimate the true source count of two. Mean estimated orders of 4--6 across scenes suggest that the masked covariance structure misleads the masked, nuisance-contaminated covariance seen by the azimuth stage. To isolate this effect, the project includes an expected-order MUSIC variant that fixes $K=2$. A follow-on nominal-only check also evaluates a simple eigengap selector to test whether the MDL failure is criterion-specific or broader.
 
 Table~\ref{tab:model-order} summarizes the saved 64-trial nominal comparison.
 
 \begin{table}[H]
 \centering
 \small
-\caption{Nominal $\pjoint$ comparison: MDL-estimated versus expected-order ($K=2$) MUSIC.}
+\caption{Nominal $\pjoint$ comparison: MDL-estimated, eigengap-selected, and expected-order ($K=2$) MUSIC.}
 \label{tab:model-order}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-Scene & MDL MUSIC & Expected-order MUSIC & FFT baseline \\
+Scene & MDL MUSIC & Eigengap MUSIC & Expected-order MUSIC & FFT baseline \\
 \midrule
-Open aisle & 0.563 & 0.719 & 0.719 \\
-Intersection & 0.703 & 0.844 & 0.156 \\
-Rack aisle & 0.000 & 0.000 & 0.031 \\
+Open aisle & 0.563 & 0.688 & 0.719 & 0.719 \\
+Intersection & 0.703 & 0.844 & 0.844 & 0.156 \\
+Rack aisle & 0.000 & 0.000 & 0.000 & 0.031 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The result is decisive for two of three scenes. In open aisle, the original nominal loss to FFT ($\pjoint = 0.563$ vs $0.719$) was largely a model-order artifact: expected-order MUSIC recovers to exact parity with the FFT baseline. In intersection, expected-order MUSIC strengthens an already-clear win. In rack aisle, fixing $K=2$ does not help at all, confirming that the failure mechanism is different.
+The result is decisive for two of three scenes. In open aisle, the original nominal loss to FFT ($\pjoint = 0.563$ vs $0.719$) was largely a model-order artifact: expected-order MUSIC recovers to exact parity with the FFT baseline, while the blind eigengap selector closes most of the gap ($\pjoint = 0.688$) without fully matching the oracle result. In intersection, eigengap reaches the same nominal $\pjoint = 0.844$ as expected-order MUSIC, which shows that MDL is not the only possible order-control choice in a favorable scene. In rack aisle, neither eigengap nor fixed $K=2$ helps at all, confirming that the failure mechanism is different.
+
+This follow-on eigengap check is useful mainly as a robustness note, not as a replacement evidence base for the project. It was run only at the nominal point, whereas the regime map and nuisance conclusions still come from the saved sweep bundle. Its value is narrower: it shows that blind order selection can be improved somewhat in the favorable scenes, but it does not change the broader conclusion that clutter-dominated rack aisle remains outside the useful operating regime.
 
 \subsection{Azimuth-Stage Failure Analysis}
 
@@ -563,6 +565,8 @@ Two framing points matter.
 First, the scenes should not be described as if target coherence were the only or even the dominant controlled difference. They are composite regimes that differ in SNR, nominal separations, target pair, target power imbalance, clutter count, and multipath layout. Because the saved empirical coherence overlaps strongly across scenes in Figure~\ref{fig:coherence-overlap}, the report avoids attributing the scene results to coherence alone.
 
 Second, expected-order MUSIC should be framed correctly. It is an oracle diagnostic for this fixed two-target study, not a deployable model-order solution. Its value is that it reveals what performance is available once subspace dimensioning is no longer the dominant failure mode.
+
+Third, the nominal eigengap follow-on should also be framed carefully. It shows that MDL is not uniquely bad and that a better blind heuristic can recover much of the lost nominal performance in open aisle while fully recovering intersection. But because it was evaluated only at the nominal point, it does not replace the submission-bundle sweeps as the main evidence for the project's regime map.
 
 These points narrow the mechanism claim, but they do \textbf{not} invalidate the empirical comparison. The saved CSVs still support the estimator comparison reported here.
 

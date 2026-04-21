@@ -123,7 +123,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--music-model-order",
         default="mdl",
-        choices=("mdl", "fixed", "expected"),
+        choices=("mdl", "eigengap", "fixed", "expected"),
         help="MUSIC model-order mode. 'expected' uses the known target count.",
     )
     parser.add_argument(

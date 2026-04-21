@@ -255,6 +255,22 @@ def estimate_model_order_mdl(
     return best_order
 
 
+def estimate_model_order_eigengap(
+    covariance: np.ndarray,
+    max_sources: int,
+) -> int:
+    """Estimate source count with a simple leading eigengap heuristic."""
+
+    dimension = covariance.shape[0]
+    if dimension <= 1:
+        return 0
+    max_sources = max(1, min(max_sources, dimension - 1))
+    eigenvalues = np.linalg.eigvalsh(covariance)
+    eigenvalues = np.sort(np.maximum(eigenvalues.real, 1.0e-12))[::-1]
+    gap_ratios = eigenvalues[:max_sources] / np.maximum(eigenvalues[1 : max_sources + 1], 1.0e-12)
+    return int(np.argmax(gap_ratios) + 1)
+
+
 def music_pseudospectrum(
     covariance: np.ndarray,
     n_targets: int,
@@ -508,6 +524,8 @@ def _estimate_music_model_order(
     if cfg is not None and cfg.music_model_order_mode == "fixed":
         return int(cfg.music_fixed_model_order or max(1, cfg.expected_target_count))
     max_sources = min(max(1, covariance.shape[0] - 1), 6)
+    if cfg is not None and cfg.music_model_order_mode == "eigengap":
+        return estimate_model_order_eigengap(covariance, max_sources)
     return estimate_model_order_mdl(covariance, snapshot_count, max_sources)
 
 

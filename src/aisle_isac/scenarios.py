@@ -233,8 +233,8 @@ def build_study_config(
 ) -> StudyConfig:
     """Resolve one complete study configuration."""
 
-    if music_model_order_mode not in {"mdl", "fixed", "expected"}:
-        raise ValueError("music_model_order_mode must be 'mdl', 'fixed', or 'expected'")
+    if music_model_order_mode not in {"mdl", "eigengap", "fixed", "expected"}:
+        raise ValueError("music_model_order_mode must be 'mdl', 'eigengap', 'fixed', or 'expected'")
     if music_fixed_model_order is not None and music_fixed_model_order < 1:
         raise ValueError("music_fixed_model_order must be at least 1 when provided")
     if music_model_order_mode == "fixed" and music_fixed_model_order is None:
