@@ -14,6 +14,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import patheffects
 from matplotlib.colors import TwoSlopeNorm
 
 
@@ -23,8 +24,8 @@ METHOD_LABELS = {
     "music_masked": "Masked Staged MUSIC + FBSS",
 }
 METHOD_COLORS = {
-    "fft_masked": "#C44E52",
-    "music_masked": "#4C72B0",
+    "fft_masked": "#D55E00",
+    "music_masked": "#0072B2",
 }
 SCENE_ORDER = ("intersection", "open_aisle", "rack_aisle")
 SCENE_COLORS = {
@@ -171,6 +172,11 @@ def _normalize_db(values: np.ndarray) -> np.ndarray:
     return finite_values - np.max(finite_values)
 
 
+def _contrast_text_effects(text_color: str) -> list[patheffects.AbstractPathEffect]:
+    outline = "#111111" if text_color == "white" else "#FFFFFF"
+    return [patheffects.withStroke(linewidth=1.6, foreground=outline)]
+
+
 def _story_nominal_verdict(rows: list[dict[str, str]], output_dir: Path) -> None:
     if not rows:
         return
@@ -217,8 +223,12 @@ def _story_nominal_verdict(rows: list[dict[str, str]], output_dir: Path) -> None
             fmt="o",
             markersize=9,
             color=METHOD_COLORS["fft_masked"],
+            mfc=METHOD_COLORS["fft_masked"],
+            mec="white",
+            mew=1.2,
+            ecolor=METHOD_COLORS["fft_masked"],
             capsize=4,
-            linewidth=2.0,
+            linewidth=2.2,
             label=METHOD_LABELS["fft_masked"] if scene_index == 0 else None,
         )
         ax.errorbar(
@@ -228,8 +238,12 @@ def _story_nominal_verdict(rows: list[dict[str, str]], output_dir: Path) -> None
             fmt="s",
             markersize=9,
             color=METHOD_COLORS["music_masked"],
+            mfc=METHOD_COLORS["music_masked"],
+            mec="white",
+            mew=1.2,
+            ecolor=METHOD_COLORS["music_masked"],
             capsize=4,
-            linewidth=2.0,
+            linewidth=2.2,
             label=METHOD_LABELS["music_masked"] if scene_index == 0 else None,
         )
         delta = music_value - fft_value
@@ -358,9 +372,9 @@ def _story_intersection_resolution(
         [float(row["range_m"]) for row in truth_rows],
         c="#2FA66A",
         marker="*",
-        s=180,
+        s=290,
         edgecolors="white",
-        linewidths=0.8,
+        linewidths=1.1,
         label="Truth movers",
     )
     ax_heatmap.scatter(
@@ -368,7 +382,9 @@ def _story_intersection_resolution(
         [float(row["range_m"]) for row in fft_rows],
         c=METHOD_COLORS["fft_masked"],
         marker="o",
-        s=72,
+        s=128,
+        edgecolors="white",
+        linewidths=0.8,
         label="FFT detections",
     )
     ax_heatmap.scatter(
@@ -376,8 +392,8 @@ def _story_intersection_resolution(
         [float(row["range_m"]) for row in music_rows],
         c=METHOD_COLORS["music_masked"],
         marker="x",
-        s=92,
-        linewidths=2.0,
+        s=160,
+        linewidths=2.8,
         label="MUSIC detections",
     )
     fft_false_row = max(fft_rows, key=lambda row: float(row["range_m"]))
@@ -408,9 +424,21 @@ def _story_intersection_resolution(
     for row in truth_rows:
         ax_azimuth.axvline(float(row["azimuth_deg"]), color="#2FA66A", linestyle="--", linewidth=1.4, alpha=0.9)
     for row in fft_rows:
-        ax_azimuth.axvline(float(row["azimuth_deg"]), color=METHOD_COLORS["fft_masked"], linestyle=":", linewidth=1.4, alpha=0.75)
+        ax_azimuth.axvline(
+            float(row["azimuth_deg"]),
+            color=METHOD_COLORS["fft_masked"],
+            linestyle=(0, (1.2, 2.2)),
+            linewidth=1.7,
+            alpha=0.85,
+        )
     for row in music_rows:
-        ax_azimuth.axvline(float(row["azimuth_deg"]), color=METHOD_COLORS["music_masked"], linestyle="-.", linewidth=1.4, alpha=0.75)
+        ax_azimuth.axvline(
+            float(row["azimuth_deg"]),
+            color=METHOD_COLORS["music_masked"],
+            linestyle=(0, (7.0, 2.5, 1.4, 2.5)),
+            linewidth=1.8,
+            alpha=0.85,
+        )
     ax_azimuth.set_xlim(-30.0, 35.0)
     ax_azimuth.set_ylim(min(-42.0, float(np.min(azimuth_y)) - 1.0), 2.0)
     ax_azimuth.set_ylabel("Relative Level (dB)")
@@ -422,9 +450,9 @@ def _story_intersection_resolution(
         [float(row["range_m"]) for row in truth_rows],
         c="#2FA66A",
         marker="*",
-        s=170,
+        s=250,
         edgecolors="white",
-        linewidths=0.8,
+        linewidths=1.0,
         label="Truth movers",
     )
     ax_localization.scatter(
@@ -432,7 +460,9 @@ def _story_intersection_resolution(
         [float(row["range_m"]) for row in fft_rows],
         c=METHOD_COLORS["fft_masked"],
         marker="o",
-        s=72,
+        s=116,
+        edgecolors="white",
+        linewidths=0.8,
         label="FFT detections",
     )
     ax_localization.scatter(
@@ -440,8 +470,8 @@ def _story_intersection_resolution(
         [float(row["range_m"]) for row in music_rows],
         c=METHOD_COLORS["music_masked"],
         marker="x",
-        s=92,
-        linewidths=2.0,
+        s=148,
+        linewidths=2.6,
         label="MUSIC detections",
     )
     ax_localization.annotate(
@@ -477,69 +507,157 @@ def _story_intersection_resolution(
 def _story_regime_map(rows: list[dict[str, str]], output_dir: Path) -> None:
     if not rows:
         return
+
     scene_classes = sorted({row["scene_class"] for row in rows}, key=_scene_key)
     panel_specs = (
         ("Support-Limited Families", SUPPORT_SWEEP_ORDER, "Joint-resolution metric"),
         ("Axis-Isolated Separation Families", SEPARATION_SWEEP_ORDER, "Axis-specific metric"),
     )
+
     panel_data: list[tuple[np.ndarray, list[list[str]]]] = []
     max_abs_delta = 0.0
     for _title, sweep_names, _subtitle in panel_specs:
         matrix = np.zeros((len(scene_classes), len(sweep_names)), dtype=float)
         labels = [["" for _ in sweep_names] for _ in scene_classes]
+
         for row_index, scene_class in enumerate(scene_classes):
             for col_index, sweep_name in enumerate(sweep_names):
-                sweep_rows = [row for row in rows if row["scene_class"] == scene_class and row["sweep_name"] == sweep_name]
+                sweep_rows = [
+                    row
+                    for row in rows
+                    if row["scene_class"] == scene_class and row["sweep_name"] == sweep_name
+                ]
                 if not sweep_rows:
                     continue
-                deltas = np.asarray([float(row["music_minus_fft"]) for row in sweep_rows], dtype=float)
-                matrix[row_index, col_index] = float(np.mean(deltas))
+
+                deltas = np.asarray(
+                    [float(row["music_minus_fft"]) for row in sweep_rows],
+                    dtype=float,
+                )
+                mean_delta = float(np.mean(deltas))
                 strong_wins = int(np.sum(deltas >= STRONG_WIN_THRESHOLD))
-                labels[row_index][col_index] = f"{np.mean(deltas):+.2f}\n{strong_wins}/{len(deltas)}"
+
+                matrix[row_index, col_index] = mean_delta
+                labels[row_index][col_index] = f"{mean_delta:+.2f}\n{strong_wins}/{len(deltas)}"
                 max_abs_delta = max(max_abs_delta, float(np.max(np.abs(deltas))))
+
         panel_data.append((matrix, labels))
+
     max_abs_delta = max(max_abs_delta, 0.01)
     norm = TwoSlopeNorm(vcenter=0.0, vmin=-max_abs_delta, vmax=max_abs_delta)
-    fig, axes = plt.subplots(
-        1,
-        2,
-        figsize=(13.0, 5.2),
-        gridspec_kw={"width_ratios": [len(SUPPORT_SWEEP_ORDER), len(SEPARATION_SWEEP_ORDER)]},
+
+    # More vertical room for title + footnote, and slightly wider right panel.
+    fig = plt.figure(figsize=(14.2, 6.2))
+    grid = fig.add_gridspec(
+        nrows=3,
+        ncols=3,
+        height_ratios=(0.9, 5.0, 0.7),   # title, panels, footnote
+        width_ratios=(len(SUPPORT_SWEEP_ORDER), len(SEPARATION_SWEEP_ORDER) + 0.6, 0.28),
+        hspace=0.18,
+        wspace=0.28,
     )
+
+    title_ax = fig.add_subplot(grid[0, :])
+    ax_left = fig.add_subplot(grid[1, 0])
+    ax_right = fig.add_subplot(grid[1, 1])
+    colorbar_ax = fig.add_subplot(grid[1, 2])
+    footer_ax = fig.add_subplot(grid[2, :])
+
+    title_ax.axis("off")
+    footer_ax.axis("off")
+
+    title_ax.text(
+        0.0,
+        1.0,
+        "MUSIC gains cluster in a few sweep families, not across the whole study\n"
+        "Cell color = mean headline-metric delta; text = strong-win count (>= +0.10)",
+        ha="left",
+        va="top",
+        fontsize=13,
+        fontweight="bold",
+        transform=title_ax.transAxes,
+    )
+
+    footer_ax.text(
+        0.0,
+        0.35,
+        "Support-limited and separation sweeps are split because they use different headline metrics.",
+        ha="left",
+        va="center",
+        fontsize=9,
+        color="#444444",
+        transform=footer_ax.transAxes,
+    )
+
+    axes = (ax_left, ax_right)
     image = None
+
     for axis_index, (ax, (panel_title, sweep_names, panel_subtitle), (matrix, labels)) in enumerate(
         zip(axes, panel_specs, panel_data, strict=True)
     ):
         image = ax.imshow(matrix, aspect="auto", cmap="RdYlBu", norm=norm)
+
         ax.set_xticks(np.arange(len(sweep_names)))
-        ax.set_xticklabels([SWEEP_LABELS[name] for name in sweep_names], rotation=20, ha="right")
+        ax.set_xticklabels(
+            [SWEEP_LABELS[name] for name in sweep_names],
+            rotation=20,
+            ha="right",
+            rotation_mode="anchor",
+            fontsize=8,
+        )
+
         ax.set_yticks(np.arange(len(scene_classes)))
         if axis_index == 0:
-            ax.set_yticklabels([_scene_label_from_rows(rows, scene_class) for scene_class in scene_classes])
+            ax.set_yticklabels(
+                [_scene_label_from_rows(rows, scene_class) for scene_class in scene_classes],
+                fontsize=8,
+            )
         else:
             ax.set_yticklabels([])
-        ax.set_title(f"{panel_title}\n{panel_subtitle}", fontsize=11.5, fontweight="bold")
+
+        ax.set_title(
+            f"{panel_title}\n{panel_subtitle}",
+            fontsize=10.5,
+            fontweight="bold",
+            pad=10,
+        )
+
+        # Thin white separators make cells easier to read.
+        ax.set_xticks(np.arange(-0.5, len(sweep_names), 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(scene_classes), 1), minor=True)
+        ax.grid(which="minor", color="white", linewidth=1.0)
+        ax.tick_params(which="minor", bottom=False, left=False)
+        ax.tick_params(length=0)
+
         for row_index in range(len(scene_classes)):
             for col_index in range(len(sweep_names)):
-                value = matrix[row_index, col_index]
-                if labels[row_index][col_index] == "":
+                if not labels[row_index][col_index]:
                     continue
+                value = matrix[row_index, col_index]
                 text_color = "white" if abs(value) >= 0.18 else "#222222"
-                ax.text(col_index, row_index, labels[row_index][col_index], ha="center", va="center", fontsize=9, color=text_color)
-    fig.suptitle(
-        "MUSIC gains cluster in a few sweep families, not across the whole study\n"
-        "Cell color = mean headline-metric delta; text = strong-win count (>= +0.10)",
-        x=0.06,
-        y=0.98,
-        ha="left",
-        fontsize=14,
-        fontweight="bold",
-    )
-    fig.text(0.06, 0.03, "Support-limited and separation sweeps are split because they use different headline metrics.", fontsize=9)
+                text = ax.text(
+                    col_index,
+                    row_index,
+                    labels[row_index][col_index],
+                    ha="center",
+                    va="center",
+                    fontsize=9,
+                    color=text_color,
+                    fontweight="bold",
+                )
+                text.set_path_effects(_contrast_text_effects(text_color))
+
     if image is not None:
-        fig.colorbar(image, ax=axes, label="Mean Headline-Metric Delta", fraction=0.035, pad=0.02)
-    fig.subplots_adjust(left=0.08, right=0.92, bottom=0.17, top=0.82, wspace=0.16)
-    fig.savefig(output_dir / "story_regime_map_from_csv.png", dpi=180)
+        cbar = fig.colorbar(image, cax=colorbar_ax)
+        cbar.set_label("Mean headline-metric delta", fontsize=9)
+        cbar.ax.tick_params(labelsize=8)
+
+    fig.savefig(
+        output_dir / "story_regime_map_from_csv.png",
+        dpi=180,
+        bbox_inches="tight",
+        pad_inches=0.2,
+    )
     plt.close(fig)
 
 
@@ -560,7 +678,7 @@ def _story_coherence_overlap(rows: list[dict[str, str]], output_dir: Path) -> No
         for scene_class in scene_classes
     }
     positions = np.arange(len(scene_classes), dtype=float)
-    fig, ax = plt.subplots(figsize=(10.2, 4.8))
+    fig, ax = plt.subplots(figsize=(10.6, 5.0))
     box = ax.boxplot(
         empirical_by_scene,
         positions=positions,
@@ -595,11 +713,18 @@ def _story_coherence_overlap(rows: list[dict[str, str]], output_dir: Path) -> No
             color="#111111",
             zorder=4,
         )
-        label_y = min(1.0, float(np.max(values)) + 0.04)
-        ax.text(position, label_y, f"mean {np.mean(values):.2f}", ha="center", va="bottom", fontsize=9)
+        ax.text(
+            position,
+            1.04,
+            f"mean {np.mean(values):.2f}",
+            ha="center",
+            va="top",
+            fontsize=9,
+            fontweight="bold",
+        )
     ax.set_xticks(positions)
     ax.set_xticklabels([_scene_label_from_rows(nominal_rows, scene_class) for scene_class in scene_classes])
-    ax.set_ylim(0.0, 1.02)
+    ax.set_ylim(0.0, 1.08)
     ax.set_ylabel("Target Coherence")
     ax.set_title(
         "Empirical nominal coherence overlaps strongly across scenes\n"
@@ -610,14 +735,14 @@ def _story_coherence_overlap(rows: list[dict[str, str]], output_dir: Path) -> No
     )
     ax.text(
         0.01,
-        0.96,
+        0.91,
         "Circles = empirical finite-snapshot coherence per nominal trial; diamond = configured scene coherence",
         transform=ax.transAxes,
         va="top",
         fontsize=9,
     )
     ax.grid(True, axis="y", alpha=0.20)
-    fig.tight_layout()
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.12, top=0.84)
     fig.savefig(output_dir / "story_coherence_overlap_from_csv.png", dpi=180)
     plt.close(fig)
 
@@ -791,17 +916,38 @@ def _story_rack_aisle_diagnostic(diag_rows: list[dict[str, str]], output_dir: Pa
     ax_cand.hist(all_candidates, bins=bins, color=SCENE_COLORS["rack_aisle"],
                  alpha=0.55, edgecolor="#444444", linewidth=0.4)
     # truth lines
-    ax_cand.axvline(truth_mean_0, color=METHOD_COLORS["music_masked"], linewidth=2.0,
-                    linestyle="--", label=f"Truth T0 ({truth_mean_0:+.1f}\u00b0)")
-    ax_cand.axvline(truth_mean_1, color=METHOD_COLORS["music_masked"], linewidth=2.0,
-                    linestyle="-", label=f"Truth T1 ({truth_mean_1:+.1f}\u00b0)")
+    ax_cand.axvline(
+        truth_mean_0,
+        color=METHOD_COLORS["music_masked"],
+        linewidth=2.6,
+        linestyle=(0, (10, 4)),
+        label=f"Truth T0 ({truth_mean_0:+.1f}\u00b0)",
+    )
+    ax_cand.axvline(
+        truth_mean_1,
+        color=METHOD_COLORS["music_masked"],
+        linewidth=2.4,
+        linestyle=(0, (6, 3)),
+        label=f"Truth T1 ({truth_mean_1:+.1f}\u00b0)",
+    )
     # clutter lines
     for name, az in clutter_azimuths.items():
-        ax_cand.axvline(az, color=METHOD_COLORS["fft_masked"], linewidth=1.6,
-                        linestyle=":", label=f"Clutter: {name} ({az:+.0f}\u00b0)")
+        ax_cand.axvline(
+            az,
+            color=METHOD_COLORS["fft_masked"],
+            linewidth=2.2,
+            linestyle=(0, (1.0, 1.8)),
+            label=f"Clutter: {name} ({az:+.0f}\u00b0)",
+        )
     for name, az in multipath_azimuths.items():
-        ax_cand.axvline(az, color=METHOD_COLORS["fft_masked"], linewidth=1.2,
-                        linestyle="-.", alpha=0.65, label=f"Multipath: {name} ({az:+.0f}\u00b0)")
+        ax_cand.axvline(
+            az,
+            color="#4D4D4D",
+            linewidth=2.0,
+            linestyle=(0, (8.0, 2.2, 1.4, 2.2)),
+            alpha=0.95,
+            label=f"Multipath: {name} ({az:+.0f}\u00b0)",
+        )
     ax_cand.set_xlabel("Azimuth (\u00b0)")
     ax_cand.set_ylabel("Candidate count (across 64 trials)")
     ax_cand.set_title("Azimuth candidates dominated by clutter branches",

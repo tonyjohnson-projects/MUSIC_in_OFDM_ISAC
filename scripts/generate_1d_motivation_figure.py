@@ -147,10 +147,42 @@ def generate_1d_motivation(output_path: Path) -> None:
     # Normalized range axis
     x_cells = (search_range_m - center_range_m) / range_resolution_m
 
-    ax1.plot(x_cells, 10 * np.log10(np.maximum(avg_fft_spectrum, 1e-6)), "C3-", linewidth=1.5, label="FFT")
-    ax1.plot(x_cells, 10 * np.log10(np.maximum(avg_music_spectrum, 1e-6)), "C0-", linewidth=1.5, label="MUSIC (K=2)")
-    ax1.axvline(-separation_factor / 2, color="0.5", linestyle="--", linewidth=0.8, label="Truth")
-    ax1.axvline(separation_factor / 2, color="0.5", linestyle="--", linewidth=0.8)
+    fft_color = "#D55E00"
+    music_color = "#0072B2"
+    truth_color = "#6F6F6F"
+    ax1.plot(
+        x_cells,
+        10 * np.log10(np.maximum(avg_fft_spectrum, 1e-6)),
+        color=fft_color,
+        linewidth=1.6,
+        label="FFT",
+        zorder=2,
+    )
+    ax1.plot(
+        x_cells,
+        10 * np.log10(np.maximum(avg_music_spectrum, 1e-6)),
+        color=music_color,
+        linewidth=1.7,
+        label="MUSIC (K=2)",
+        zorder=3,
+    )
+    ax1.axvline(
+        -separation_factor / 2,
+        color=truth_color,
+        linestyle=(0, (5, 4)),
+        linewidth=0.6,
+        alpha=0.7,
+        label="Truth",
+        zorder=1,
+    )
+    ax1.axvline(
+        separation_factor / 2,
+        color=truth_color,
+        linestyle=(0, (5, 4)),
+        linewidth=0.6,
+        alpha=0.7,
+        zorder=1,
+    )
     ax1.set_xlabel("Range offset (resolution cells)")
     ax1.set_ylabel("Normalized spectrum (dB)")
     ax1.set_title(f"1-D range: {separation_factor:.2f}-cell separation, {snr_db:.0f} dB SNR")
@@ -162,7 +194,7 @@ def generate_1d_motivation(output_path: Path) -> None:
     # Resolution probability bar chart
     methods = ["FFT", "MUSIC"]
     probs = [fft_resolve_prob, music_resolve_prob]
-    colors = ["#C44E52", "#4C72B0"]
+    colors = [fft_color, music_color]
     bars = ax2.bar(methods, probs, color=colors, width=0.5)
     for bar, prob in zip(bars, probs):
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.02,
