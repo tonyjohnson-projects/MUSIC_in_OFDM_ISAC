@@ -3,154 +3,118 @@
 
 from __future__ import annotations
 
-from common import (
-    REPO_ROOT,
-    SEPARATION_SWEEP_ORDER,
-    STRONG_WIN_THRESHOLD,
-    SUPPORT_SWEEP_ORDER,
-    SWEEP_LABELS,
-    TwoSlopeNorm,
-    build_plot_parser,
-    contrast_text_effects,
-    np,
-    plt,
-    read_csv_rows,
-    resolve_data_dir,
-    save_figure,
-    scene_key,
-    scene_label_from_rows,
+from collections import defaultdict
+
+from common import METHOD_COLORS, REPO_ROOT, SWEEP_LABELS, build_plot_parser, np, plt, read_csv_rows, resolve_data_dir, save_figure
+
+
+AXIS_METRICS = (
+    "range_resolution_probability",
+    "velocity_resolution_probability",
+    "angle_resolution_probability",
 )
+EXCLUDED_SWEEPS = {"nominal", "nuisance_gain_offset"}
 
 
 def make_figure(data_dir, output_path) -> None:
-    rows = read_csv_rows(data_dir / "usefulness_windows.csv")
+    rows = read_csv_rows(data_dir / "all_sweep_results.csv")
     if not rows:
-        raise SystemExit(f"Missing or empty usefulness windows: {data_dir / 'usefulness_windows.csv'}")
+        raise SystemExit(f"Missing or empty sweep results: {data_dir / 'all_sweep_results.csv'}")
 
-    scene_classes = sorted({row["scene_class"] for row in rows}, key=scene_key)
-    panel_specs = (
-        ("Support-Limited Families", SUPPORT_SWEEP_ORDER, "Joint-resolution metric"),
-        ("Axis-Isolated Separation Families", SEPARATION_SWEEP_ORDER, "Axis-specific metric"),
-    )
+    paired_rows: dict[tuple[str, str, str, str], dict[str, dict[str, str]]] = defaultdict(dict)
+    for row in rows:
+        if row["knowledge_mode"] != "known_symbols" or row["sweep_name"] in EXCLUDED_SWEEPS:
+            continue
+        if row["method"] not in {"fft_masked", "music_masked"}:
+            continue
+        pair_key = (
+            row["scene_class"],
+            row["sweep_name"],
+            row["parameter_value"],
+            row["parameter_numeric_value"],
+        )
+        paired_rows[pair_key][row["method"]] = row
 
-    panel_data: list[tuple[np.ndarray, list[list[str]]]] = []
-    max_abs_delta = 0.0
-    for _title, sweep_names, _subtitle in panel_specs:
-        matrix = np.zeros((len(scene_classes), len(sweep_names)), dtype=float)
-        labels = [["" for _ in sweep_names] for _ in scene_classes]
-        for row_index, scene_class in enumerate(scene_classes):
-            for col_index, sweep_name in enumerate(sweep_names):
-                sweep_rows = [
-                    row
-                    for row in rows
-                    if row["scene_class"] == scene_class and row["sweep_name"] == sweep_name
+    sweep_slot_deltas: dict[str, list[float]] = defaultdict(list)
+    for (_scene_class, sweep_name, _parameter_value, _parameter_numeric_value), methods in paired_rows.items():
+        if "fft_masked" not in methods or "music_masked" not in methods:
+            continue
+        slot_delta = float(
+            np.mean(
+                [
+                    float(methods["music_masked"][metric_name]) - float(methods["fft_masked"][metric_name])
+                    for metric_name in AXIS_METRICS
                 ]
-                if not sweep_rows:
-                    continue
-                deltas = np.asarray([float(row["music_minus_fft"]) for row in sweep_rows], dtype=float)
-                mean_delta = float(np.mean(deltas))
-                strong_wins = int(np.sum(deltas >= STRONG_WIN_THRESHOLD))
-                matrix[row_index, col_index] = mean_delta
-                labels[row_index][col_index] = f"{mean_delta:+.2f}\n{strong_wins}/{len(deltas)}"
-                max_abs_delta = max(max_abs_delta, float(np.max(np.abs(deltas))))
-        panel_data.append((matrix, labels))
+            )
+        )
+        sweep_slot_deltas[sweep_name].append(slot_delta)
 
-    max_abs_delta = max(max_abs_delta, 0.01)
-    norm = TwoSlopeNorm(vcenter=0.0, vmin=-max_abs_delta, vmax=max_abs_delta)
+    if not sweep_slot_deltas:
+        raise SystemExit("No paired FFT/MUSIC sweep rows were available for the sweep-family bar figure.")
 
-    fig = plt.figure(figsize=(14.2, 6.2))
-    grid = fig.add_gridspec(
-        nrows=3,
-        ncols=3,
-        height_ratios=(0.9, 5.0, 0.7),
-        width_ratios=(len(SUPPORT_SWEEP_ORDER), len(SEPARATION_SWEEP_ORDER) + 0.6, 0.28),
-        hspace=0.18,
-        wspace=0.28,
+    mean_deltas = {
+        sweep_name: float(np.mean(slot_deltas))
+        for sweep_name, slot_deltas in sweep_slot_deltas.items()
+    }
+    ordered_sweeps = sorted(mean_deltas, key=lambda sweep_name: abs(mean_deltas[sweep_name]), reverse=True)
+    values = [mean_deltas[sweep_name] for sweep_name in ordered_sweeps]
+    labels = [SWEEP_LABELS.get(sweep_name, sweep_name.replace("_", " ").title()) for sweep_name in ordered_sweeps]
+    colors = [
+        METHOD_COLORS["music_masked"] if value >= 0.0 else METHOD_COLORS["fft_masked"]
+        for value in values
+    ]
+
+    max_abs_value = max(max(abs(value) for value in values), 0.05)
+    y_limit = 1.25 * max_abs_value
+
+    fig, ax = plt.subplots(figsize=(11.8, 4.9))
+    x_positions = np.arange(len(ordered_sweeps), dtype=float)
+    bars = ax.bar(x_positions, values, color=colors, width=0.72)
+
+    ax.axhline(0.0, color="#444444", linewidth=1.1)
+    ax.set_ylim(-y_limit, y_limit)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(labels, rotation=24, ha="right", rotation_mode="anchor")
+    ax.set_ylabel("Mean MUSIC - FFT delta")
+    ax.grid(True, axis="y", alpha=0.18)
+    ax.set_title(
+        "Average FFT/MUSIC gap by sweep family",
+        loc="left",
+        fontsize=14,
+        fontweight="bold",
     )
-    title_ax = fig.add_subplot(grid[0, :])
-    ax_left = fig.add_subplot(grid[1, 0])
-    ax_right = fig.add_subplot(grid[1, 1])
-    colorbar_ax = fig.add_subplot(grid[1, 2])
-    footer_ax = fig.add_subplot(grid[2, :])
-
-    title_ax.axis("off")
-    footer_ax.axis("off")
-    title_ax.text(
-        0.0,
-        1.0,
-        "MUSIC gains cluster in a few sweep families, not across the whole study\nCell color = mean headline-metric delta; text = strong-win count (>= +0.10)",
+    fig.text(
+        0.125,
+        0.93,
+        "Each bar averages the range, velocity, and angle resolution deltas over all scenes and sweep values in that family. Positive bars favor MUSIC.",
         ha="left",
         va="top",
-        fontsize=13,
-        fontweight="bold",
-        transform=title_ax.transAxes,
-    )
-    footer_ax.text(
-        0.0,
-        0.35,
-        "Support-limited and separation sweeps are split because they use different headline metrics.",
-        ha="left",
-        va="center",
         fontsize=9,
         color="#444444",
-        transform=footer_ax.transAxes,
     )
 
-    axes = (ax_left, ax_right)
-    image = None
-    for axis_index, (ax, panel_spec, panel_values) in enumerate(zip(axes, panel_specs, panel_data, strict=True)):
-        panel_title, sweep_names, panel_subtitle = panel_spec
-        matrix, labels = panel_values
-        image = ax.imshow(matrix, aspect="auto", cmap="RdYlBu", norm=norm)
-        ax.set_xticks(np.arange(len(sweep_names)))
-        ax.set_xticklabels(
-            [SWEEP_LABELS[name] for name in sweep_names],
-            rotation=20,
-            ha="right",
-            rotation_mode="anchor",
-            fontsize=8,
+    label_offset = 0.04 * y_limit
+    for bar, value in zip(bars, values, strict=True):
+        x_value = bar.get_x() + bar.get_width() / 2.0
+        y_value = value + label_offset if value >= 0.0 else value - label_offset
+        ax.text(
+            x_value,
+            y_value,
+            f"{value:+.2f}",
+            ha="center",
+            va="bottom" if value >= 0.0 else "top",
+            fontsize=9,
+            fontweight="bold",
+            color=bar.get_facecolor(),
         )
-        ax.set_yticks(np.arange(len(scene_classes)))
-        if axis_index == 0:
-            ax.set_yticklabels([scene_label_from_rows(rows, scene_class) for scene_class in scene_classes], fontsize=8)
-        else:
-            ax.set_yticklabels([])
-        ax.set_title(f"{panel_title}\n{panel_subtitle}", fontsize=10.5, fontweight="bold", pad=10)
-        ax.set_xticks(np.arange(-0.5, len(sweep_names), 1), minor=True)
-        ax.set_yticks(np.arange(-0.5, len(scene_classes), 1), minor=True)
-        ax.grid(which="minor", color="white", linewidth=1.0)
-        ax.tick_params(which="minor", bottom=False, left=False)
-        ax.tick_params(length=0)
 
-        for row_index in range(len(scene_classes)):
-            for col_index in range(len(sweep_names)):
-                if not labels[row_index][col_index]:
-                    continue
-                value = matrix[row_index, col_index]
-                text_color = "white" if abs(value) >= 0.18 else "#222222"
-                text = ax.text(
-                    col_index,
-                    row_index,
-                    labels[row_index][col_index],
-                    ha="center",
-                    va="center",
-                    fontsize=9,
-                    color=text_color,
-                    fontweight="bold",
-                )
-                text.set_path_effects(contrast_text_effects(text_color))
-
-    if image is not None:
-        cbar = fig.colorbar(image, cax=colorbar_ax)
-        cbar.set_label("Mean headline-metric delta", fontsize=9)
-        cbar.ax.tick_params(labelsize=8)
-
-    save_figure(fig, output_path, bbox_inches="tight", pad_inches=0.2)
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.90))
+    save_figure(fig, output_path, bbox_inches="tight", pad_inches=0.16)
 
 
 def main() -> None:
     parser = build_plot_parser(
-        "Generate the regime-map figure.",
+        "Generate the sweep-family delta bar chart.",
         "05_regime_map.png",
         default_input_root=REPO_ROOT / "results" / "submission",
     )

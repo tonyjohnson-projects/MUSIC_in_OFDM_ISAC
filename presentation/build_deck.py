@@ -39,7 +39,7 @@ FIGURE_SPECS = (
     ("story_nominal_verdict", "02_nominal_scene_verdict.png", "Nominal verdict", "Nominal scene verdict generated from saved CSV outputs."),
     ("story_trial_delta", "03_nominal_trial_delta.png", "Paired nominal trial delta", "Paired nominal trial-delta figure generated from saved CSV outputs."),
     ("story_coherence_overlap", "04_scene_coherence_overlap.png", "Coherence overlap", "Configured-versus-empirical coherence figure."),
-    ("story_regime_map", "05_regime_map.png", "Regime map", "Sweep-family regime map generated from saved CSV outputs."),
+    ("story_regime_map", "05_regime_map.png", "Sweep-family gap bars", "Sweep-family delta bar chart generated from saved CSV outputs."),
     ("story_rack_aisle_diagnostic", "06_rack_aisle_failure_diagnostic.png", "Rack-aisle failure diagnostic", "Rack-aisle candidate and detection diagnostic."),
     ("nominal_resource_mask", "07_nominal_resource_mask.png", "Nominal resource mask", "Nominal fragmented PRB resource mask used by the study."),
     ("representative_intersection_case", "08_representative_intersection_case.png", "Representative nominal intersection trial", "Reconstructed saved nominal trial showing FFT versus MUSIC behavior in intersection."),
@@ -103,7 +103,7 @@ def _write_support_documents(slides: list[dict[str, object]], claims: list[dict[
             2. Clean 1-D super-resolution intuition.
             3. Masked observation model and FFT versus MUSIC framing.
             4. Study design, fairness, waveform choices, and bespoke simulation stack.
-            5. Nominal verdict, representative case, regime map, order diagnosis, and rack-aisle failure mechanism.
+            5. Nominal verdict, representative case, sweep-family gap bars, order diagnosis, and rack-aisle failure mechanism.
             6. Conditional thesis, limitations, and next steps.
 
             Visual system:

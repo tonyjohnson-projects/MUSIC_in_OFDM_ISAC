@@ -452,25 +452,25 @@ Rack aisle & 0 & Joint failure. One detection is near the first mover, but the s
 
 These negative cases fit the aggregate picture. Open aisle contains real paired trials where FFT refinement is already sufficient and staged MUSIC overcommits to a spurious alternative, while rack aisle is dominated by hard cluttered trials in which neither method maintains two reliable joint assignments.
 
-\subsection{Regime Map Across Sweeps}
+\subsection{Sweep-Family Gap Summary}
 
-The project becomes more interesting when it is interpreted as a regime map rather than as a single nominal verdict. Figure~\ref{fig:regime-map} summarizes the saved sweep families.
+The more useful sweep-level summary is not another scene split. Figure~\ref{fig:regime-map} instead compresses the saved sweep bundle into one signed bar per sweep family, where each bar averages the range-, velocity-, and angle-resolution deltas across all scenes and sweep values in that family.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{05_regime_map.png}
-\caption{Two-panel regime map from the saved submission bundle. Support-limited sweeps (allocation, occupancy, fragmentation, bandwidth, slow time) are separated from axis-isolated separation sweeps because they use different headline metrics. Cell color shows the mean MUSIC-minus-FFT delta within that sweep family, while the text shows the number of strong-win points with delta at least $+0.10$.}
+\caption{Sweep-family delta bar chart from the saved submission bundle. Each bar averages the MUSIC-minus-FFT deltas in range, velocity, and angle resolution over all scenes and sweep values in that family. Positive bars favor MUSIC and negative bars favor FFT.}
 \label{fig:regime-map}
 \end{figure}
 
 Three sweep-level patterns matter:
 \begin{enumerate}
-  \item \textbf{Open aisle:} MUSIC has no strong-win points at all in the 22 support-limited sweep points, and only one strong-win point in the 15 axis-isolated separation points. After FFT refinement, this is mostly an FFT-favorable regime.
-  \item \textbf{Intersection:} MUSIC wins broadly in the 22 support-limited sweep points, with 15 strong-win points and a positive mean delta in every support family. Its axis-specific advantage is much narrower: it helps on range separation, but not on the isolated velocity and angle sweeps.
-  \item \textbf{Rack aisle:} MUSIC does not help in the 22 support-limited sweep points and does not rescue the nominal point. Its positive cells are concentrated in easier separation sweeps, especially range and velocity separation, which means the staged pipeline can still benefit when the scene is made artificially easier.
+  \item \textbf{Angle separation is the clearest FFT-favorable family.} Its bar is the largest in magnitude and points strongly negative, which means the averaged range-, velocity-, and angle-resolution deltas all lean toward FFT in that family.
+  \item \textbf{Slow-time span, range separation, and fragmentation are the clearest MUSIC-favorable families.} Their bars remain meaningfully positive after averaging across scenes and across the three axis metrics, so they are the most defensible places to claim a real MUSIC benefit.
+  \item \textbf{Allocation and occupancy contribute almost no net gap.} Their bars sit near zero, which means they do not reliably separate the methods once the full saved sweep bundle is averaged down.
 \end{enumerate}
 
-The split regime map is the most important high-level result of the project. It says that MUSIC is neither universally useful nor universally useless under waveform limitation. Instead, its gains cluster in specific scene and support regimes, and the support-limited and axis-isolated sweep families must be interpreted separately.
+This bar-summary view is more useful than the earlier heat-map split because it makes the concentration of the FFT/MUSIC gap obvious. The gap is not spread evenly across the whole study; it is driven mainly by a few sweep families, with angle separation pulling toward FFT and slow-time or range-favorable support conditions pulling toward MUSIC.
 
 \subsection{Model-Order Diagnosis}
 
@@ -496,18 +496,18 @@ Rack aisle & 0.000 & 0.000 & 0.000 & 0.031 \\
 
 The result is decisive for two of three scenes. In open aisle, the original nominal loss to FFT ($\pjoint = 0.563$ vs $0.719$) was largely a model-order artifact: expected-order MUSIC recovers to exact parity with the FFT baseline, while the blind eigengap selector closes most of the gap ($\pjoint = 0.688$) without fully matching the oracle result. In intersection, eigengap reaches the same nominal $\pjoint = 0.844$ as expected-order MUSIC, which shows that MDL is not the only possible order-control choice in a favorable scene. In rack aisle, neither eigengap nor fixed $K=2$ helps at all, confirming that the failure mechanism is different.
 
-This follow-on eigengap check is useful mainly as a robustness note, not as a replacement evidence base for the project. It was run only at the nominal point, whereas the regime map and nuisance conclusions still come from the saved sweep bundle. Its value is narrower: it shows that blind order selection can be improved somewhat in the favorable scenes, but it does not change the broader conclusion that clutter-dominated rack aisle remains outside the useful operating regime.
+This follow-on eigengap check is useful mainly as a robustness note, not as a replacement evidence base for the project. It was run only at the nominal point, whereas the sweep-family bar summary and nuisance conclusions still come from the saved sweep bundle. Its value is narrower: it shows that blind order selection can be improved somewhat in the favorable scenes, but it does not change the broader conclusion that clutter-dominated rack aisle remains outside the useful operating regime.
 
 \subsection{Azimuth-Stage Failure Analysis}
 
-The saved stage diagnostics in the nominal rack-aisle bundle show why the scene resists the fix. In failed rack-aisle trials, the azimuth candidate list repeatedly contains a nuisance-aligned branch near $-21.7^\circ$, close to the left-rack clutter at $-24^\circ$, while the true second mover near $+5^\circ$ is intermittently absent from the useful candidate set. The final detections then either duplicate the easier mover or jump to the nuisance branch.
+The saved stage diagnostics in the nominal rack-aisle bundle show why the scene resists the fix. The azimuth stage repeatedly retains a nuisance-aligned branch near $-21.7^\circ$, close to the left-rack clutter at $-24^\circ$, plus several stable alias branches, while each truth sector survives in only about half of the trials. Later processing does not remove the wrong branch cleanly: the left-rack branch still appears in 50 of the 64 final output pairs.
 
-Figure~\ref{fig:rack-diagnostic} visualises this directly. The left panel histograms the azimuth candidates produced across all 64 nominal rack-aisle trials. A persistent nuisance-aligned branch near $-21.7^\circ$---close to the left-rack clutter at $-24^\circ$---appears in every trial, while candidates near the two true movers ($\approx -1^\circ$ and $+5^\circ$) each appear in only half. The right panel shows where the final detections actually land: 50 of 128 detection slots (39\%) are captured by the nuisance branch, while the true movers receive only 36 and 29 respectively.
+Figure~\ref{fig:rack-diagnostic} visualises this more directly. The left panel plots how often each azimuth branch survives across the 64 nominal rack-aisle trials. Several nuisance and alias branches survive in essentially every trial, while the two truth sectors appear in only 32 of 64 each. The right panel compares branch presence at the azimuth stage with branch presence in the final output pair for the key sectors. The left-rack nuisance branch falls only from 64 to 50 trials, which shows that later range/Doppler processing is largely operating on a corrupted candidate set rather than recovering the missing mover.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{06_rack_aisle_failure_diagnostic.png}
-\caption{Rack-aisle azimuth-stage failure diagnostic. Left: histogram of azimuth candidates across 64 nominal trials, with truth target azimuths (blue dashed/solid) and clutter/multipath angles (red dotted/dash-dot). The persistent candidate near $-21.7^\circ$ aligns with the left-rack clutter at $-24^\circ$ and appears in every trial. Right: distribution of final detection azimuths showing that the nuisance branch captures 39\% of outputs, confirming spatial subspace capture as the failure mechanism.}
+\caption{Rack-aisle azimuth-stage failure diagnostic. Left: trial-level survival of dominant azimuth branches across 64 nominal rack-aisle trials; nuisance and alias branches persist almost every time, while the two truth sectors survive in only half. Right: comparison of azimuth-stage branch presence and final-pair branch presence for the key sectors; the left-rack nuisance branch remains in 50 of 64 final output pairs, which is consistent with early spatial capture rather than a late-stage scoring mistake.}
 \label{fig:rack-diagnostic}
 \end{figure}
 
@@ -566,7 +566,7 @@ First, the scenes should not be described as if target coherence were the only o
 
 Second, expected-order MUSIC should be framed correctly. It is an oracle diagnostic for this fixed two-target study, not a deployable model-order solution. Its value is that it reveals what performance is available once subspace dimensioning is no longer the dominant failure mode.
 
-Third, the nominal eigengap follow-on should also be framed carefully. It shows that MDL is not uniquely bad and that a better blind heuristic can recover much of the lost nominal performance in open aisle while fully recovering intersection. But because it was evaluated only at the nominal point, it does not replace the submission-bundle sweeps as the main evidence for the project's regime map.
+Third, the nominal eigengap follow-on should also be framed carefully. It shows that MDL is not uniquely bad and that a better blind heuristic can recover much of the lost nominal performance in open aisle while fully recovering intersection. But because it was evaluated only at the nominal point, it does not replace the submission-bundle sweeps as the main evidence for the project's sweep-family gap summary.
 
 These points narrow the mechanism claim, but they do \textbf{not} invalidate the empirical comparison. The saved CSVs still support the estimator comparison reported here.
 
@@ -576,7 +576,7 @@ The result is useful to a 6G-oriented audience for three reasons:
 \begin{enumerate}
   \item It studies sensing from the communication waveform itself rather than from a radar-only waveform.
   \item It uses support limitations that look like scheduling decisions rather than ideal contiguous radar occupancy.
-  \item It gives a regime map, which is more actionable for system design than a single broad positive claim.
+  \item It isolates which sweep families actually move the FFT/MUSIC gap, which is more actionable for system design than a single broad positive claim.
 \end{enumerate}
 
 The practical message is not ``deploy MUSIC everywhere.'' It is closer to:

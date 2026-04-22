@@ -26,7 +26,7 @@ def make_figure(output_path) -> None:
     scene_labels = {"intersection": "Intersection", "open_aisle": "Open aisle", "rack_aisle": "Rack aisle"}
     method_order = ("fft", "mdl", "eigengap", "expected")
     method_labels = {"fft": "FFT", "mdl": "MDL MUSIC", "eigengap": "Eigengap MUSIC", "expected": "Expected-order MUSIC"}
-    method_colors = {"fft": METHOD_COLORS["fft_masked"], "mdl": "#7F7F7F", "eigengap": "#009E73", "expected": METHOD_COLORS["music_masked"]}
+    method_colors = {"fft": METHOD_COLORS["fft_masked"], "mdl": "#56B4E9", "eigengap": "#004D7F", "expected": METHOD_COLORS["music_masked"]}
 
     fig, ax = plt.subplots(figsize=(10.5, 4.8))
     y_positions = np.arange(len(scene_order), dtype=float)
@@ -43,7 +43,7 @@ def make_figure(output_path) -> None:
                 zorder=3,
             )
             
-            text_color = "#D55E00" if method == "mdl" else ("#009E73" if method == "eigengap" else "black")
+            text_color = "red" if method == "mdl" else ("limegreen" if method == "eigengap" else "black")
             font_weight = "bold" if method in ("mdl", "eigengap") else "normal"
             ax.text(
                 value + 0.015,

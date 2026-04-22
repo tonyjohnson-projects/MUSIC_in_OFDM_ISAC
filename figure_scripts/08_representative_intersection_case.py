@@ -5,12 +5,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from matplotlib.lines import Line2D
 from matplotlib.patheffects import Normal, Stroke
 
 from common import METHOD_COLORS, REPO_ROOT, build_plot_parser, np, plt, read_csv_rows, save_figure, trim_figure_whitespace
-from aisle_isac.estimators import _estimate_music_model_order, azimuth_steering_matrix, fbss_covariance, fft_search_bounds, music_pseudospectrum
-from aisle_isac.masked_observation import extract_known_symbol_cube
 from aisle_isac.scenarios import build_study_config
 from aisle_isac.scheduled_study import _nominal_point_spec, nominal_trial_parameters, simulate_communications_trial
 
@@ -67,7 +64,7 @@ def reconstruct_nominal_trial(scene_name: str, trial_index: int):
 
 def make_figure(output_path) -> None:
     trial_index = select_representative_intersection_trial()
-    cfg, trial = reconstruct_nominal_trial("intersection", trial_index)
+    _, trial = reconstruct_nominal_trial("intersection", trial_index)
 
     truth_targets = trial.masked_observation.snapshot.scenario.targets
     fft_detections = trial.estimates["fft_masked"].detections
@@ -80,30 +77,7 @@ def make_figure(output_path) -> None:
     velocity_span, range_span = velocity_max - velocity_min, range_max - range_min
     range_doppler_db = 10.0 * np.log10(np.maximum(np.max(trial.fft_cube.power_cube, axis=0), 1.0e-12))
 
-    known_cube = extract_known_symbol_cube(trial.masked_observation)
-    global_matrix = known_cube.reshape(known_cube.shape[0], -1)
-    spatial_cov = fbss_covariance(global_matrix, cfg.fbss_subarray_len)
-    search_bounds = fft_search_bounds(trial.fft_cube)
-    estimated_model_order = _estimate_music_model_order(spatial_cov, global_matrix.shape[1], cfg)
-    spectrum_target_order = max(1, cfg.expected_target_count, estimated_model_order)
-    azimuth_grid = np.linspace(
-        max(-80.0, search_bounds.azimuth_min_deg + 0.5),
-        min(80.0, search_bounds.azimuth_max_deg - 0.5),
-        cfg.runtime_profile.music_grid_points * 3,
-    )
-    steering_matrix = azimuth_steering_matrix(cfg.effective_horizontal_positions_m[: cfg.fbss_subarray_len], azimuth_grid, cfg.wavelength_m)
-    azimuth_spectrum = music_pseudospectrum(spatial_cov, n_targets=spectrum_target_order, steering_matrix=steering_matrix)
-    azimuth_spectrum_db = 10.0 * np.log10(np.maximum(azimuth_spectrum / np.max(azimuth_spectrum), 1.0e-12))
-    fft_azimuth_grid = trial.fft_cube.azimuth_axis_deg
-    fft_azimuth_spectrum = np.max(trial.fft_cube.power_cube, axis=(1, 2))
-    fft_azimuth_spectrum_db = 10.0 * np.log10(np.maximum(fft_azimuth_spectrum / np.max(fft_azimuth_spectrum), 1.0e-12))
-
-    truth_azimuths = sorted(target.azimuth_deg for target in truth_targets)
-
-    fig = plt.figure(figsize=(13.2, 5.6))
-    grid = fig.add_gridspec(1, 2, width_ratios=(1.55, 1.0), wspace=0.40)
-    ax_heatmap = fig.add_subplot(grid[0, 0])
-    ax_azimuth = fig.add_subplot(grid[0, 1])
+    fig, ax_heatmap = plt.subplots(figsize=(8.3, 5.6))
 
     image = ax_heatmap.imshow(
         range_doppler_db, aspect="auto", origin="lower", extent=[velocity_min, velocity_max, range_min, range_max], cmap="viridis"
@@ -125,7 +99,7 @@ def make_figure(output_path) -> None:
     annotation_bbox = {"boxstyle": "round,pad=0.3", "facecolor": "white", "edgecolor": "none", "alpha": 0.88}
     false_fft = max(fft_detections, key=lambda detection: detection.range_m)
     ax_heatmap.annotate(
-        "FFT false branch",
+        "FFT duplicates\n+v branch",
         xy=(false_fft.velocity_mps, false_fft.range_m),
         xytext=(
             min(velocity_max - 0.02 * velocity_span, false_fft.velocity_mps + 0.18 * velocity_span),
@@ -142,7 +116,7 @@ def make_figure(output_path) -> None:
 
     music_anchor = min(music_detections, key=lambda detection: detection.range_m)
     ax_heatmap.annotate(
-        "MUSIC lands on\nboth movers",
+        "MUSIC resolves\nboth movers",
         xy=(music_anchor.velocity_mps, music_anchor.range_m),
         xytext=(velocity_min + 0.14 * velocity_span, range_min + 0.35  * range_span),
         ha="left",
@@ -154,7 +128,7 @@ def make_figure(output_path) -> None:
         bbox=annotation_bbox,
     )
 
-    ax_heatmap.set_title(f"Saved nominal intersection trial {trial_index}", loc="left", fontsize=13, fontweight="bold")
+    ax_heatmap.set_title("Representative intersection trial", loc="left", fontsize=13, fontweight="bold")
     ax_heatmap.set_xlabel("Velocity (m/s)")
     ax_heatmap.set_ylabel("Range (m)")
     heatmap_legend = ax_heatmap.legend(
@@ -163,51 +137,6 @@ def make_figure(output_path) -> None:
     )
     heatmap_legend.set_zorder(8)
     fig.colorbar(image, ax=ax_heatmap, fraction=0.046, pad=0.03, label="FFT range-Doppler power (dB)")
-
-    fft_color = METHOD_COLORS["fft_masked"]
-    music_color = METHOD_COLORS["music_masked"]
-    truth_color = "#1E8A57"
-    fft_line, = ax_azimuth.plot(
-        fft_azimuth_grid,
-        fft_azimuth_spectrum_db,
-        color=fft_color,
-        linewidth=1.9,
-        linestyle=(0, (5.0, 2.0)),
-        alpha=0.9,
-        label="FFT spectrum",
-        zorder=3,
-    )
-    music_line, = ax_azimuth.plot(
-        azimuth_grid,
-        azimuth_spectrum_db,
-        color=music_color,
-        linewidth=2.4,
-        label="MUSIC spectrum",
-        zorder=4,
-    )
-
-    azimuth_min, azimuth_max = min(truth_azimuths), max(truth_azimuths)
-    azimuth_margin = max(8.0, 1.5 * (azimuth_max - azimuth_min))
-    ax_azimuth.set_xlim(azimuth_min - azimuth_margin, azimuth_max + azimuth_margin)
-    ax_azimuth.set_ylim(
-        min(-42.0, float(np.min(fft_azimuth_spectrum_db)), float(np.min(azimuth_spectrum_db)) - 1.0),
-        2.0,
-    )
-
-    for azimuth in truth_azimuths:
-        ax_azimuth.axvspan(azimuth - 0.25, azimuth + 0.25, color=truth_color, alpha=0.28, zorder=1)
-        ax_azimuth.axvline(azimuth, color=truth_color, linewidth=2.0, alpha=0.95, zorder=2)
-
-    ax_azimuth.set_xlabel("Azimuth (deg)")
-    ax_azimuth.set_ylabel("Relative level (dB)")
-    ax_azimuth.set_title("Marginal azimuth spectra", loc="left", fontsize=12, fontweight="bold", pad=12)
-    ax_azimuth.grid(True, alpha=0.22)
-
-    truth_handle = Line2D([0], [0], color=truth_color, linewidth=3.0, alpha=0.95, label="Truth azimuth")
-    ax_azimuth.legend(
-        handles=[fft_line, music_line, truth_handle],
-        loc="lower left", fontsize=9, frameon=True, framealpha=0.92, facecolor="white", edgecolor="#CCCCCC", handlelength=2.8, handletextpad=0.6,
-    )
 
     fig.tight_layout()
     save_figure(fig, output_path)

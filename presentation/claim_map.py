@@ -87,8 +87,8 @@ def get_claim_map() -> tuple[ClaimEntry, ...]:
         ),
         ClaimEntry(
             slide_id="s16-rack-failure",
-            slide_title="Rack aisle fails because nuisance-aligned azimuth structure captures the spatial search",
-            claim="The rack-aisle diagnostic shows a persistent nuisance-aligned azimuth branch near the left-rack clutter and roughly 39% of final detections landing on that nuisance branch.",
+            slide_title="Rack aisle is a clutter-limited regime",
+            claim="The rack-aisle diagnostic shows stable nuisance branches surviving the azimuth stage and the left-rack branch persisting into 50 of 64 final output pairs.",
             evidence=("repo_stage_diag", "repo_report"),
         ),
         ClaimEntry(
@@ -116,4 +116,3 @@ def get_claim_dicts() -> list[dict[str, object]]:
     """Return plain dictionaries for serialization."""
 
     return [asdict(entry) for entry in get_claim_map()]
-

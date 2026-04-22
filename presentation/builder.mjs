@@ -538,7 +538,12 @@ async function renderSlide(slide, slideSpec, slideIndex, slideCount, figureManif
         figure.title,
         "contain",
       );
-      renderBulletPanel(slide, slideSpec.visible_copy, { left: 900, top: 180, width: 308, height: 470 }, "Why it matters");
+      renderBulletPanel(
+        slide,
+        slideSpec.visible_copy,
+        { left: 900, top: 180, width: 308, height: 470 },
+        slideSpec.metadata?.panel_title ?? "Why it matters",
+      );
       if (slideSpec.metadata?.figure_caption) {
         addTextBox(slide, {
           left: 72,
