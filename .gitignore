@@ -16,6 +16,7 @@ scripts/__pycache__/
 src/aisle_isac/__pycache__/
 src/aisle_isac.egg-info/
 tests/__pycache__/
+/pres_figures
 
 # LaTeX build artifacts
 report/build/
