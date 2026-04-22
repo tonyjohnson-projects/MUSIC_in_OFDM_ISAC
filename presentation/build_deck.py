@@ -32,7 +32,23 @@ for extra_path in (REPO_ROOT, REPO_ROOT / "src"):
 from presentation.claim_map import get_claim_dicts
 from presentation.deck_spec import get_slide_dicts
 from presentation.sources import get_source_dicts
-from generate_figures import generate_figures
+
+
+FIGURE_SPECS = (
+    ("motivation_1d_range", "01_motivation_1d_range.png", "1-D MUSIC motivation", "Motivating 1-D range-only MUSIC versus FFT figure."),
+    ("story_nominal_verdict", "02_nominal_scene_verdict.png", "Nominal verdict", "Nominal scene verdict generated from saved CSV outputs."),
+    ("story_trial_delta", "03_nominal_trial_delta.png", "Paired nominal trial delta", "Paired nominal trial-delta figure generated from saved CSV outputs."),
+    ("story_coherence_overlap", "04_scene_coherence_overlap.png", "Coherence overlap", "Configured-versus-empirical coherence figure."),
+    ("story_regime_map", "05_regime_map.png", "Regime map", "Sweep-family regime map generated from saved CSV outputs."),
+    ("story_rack_aisle_diagnostic", "06_rack_aisle_failure_diagnostic.png", "Rack-aisle failure diagnostic", "Rack-aisle candidate and detection diagnostic."),
+    ("nominal_resource_mask", "07_nominal_resource_mask.png", "Nominal resource mask", "Nominal fragmented PRB resource mask used by the study."),
+    ("representative_intersection_case", "08_representative_intersection_case.png", "Representative nominal intersection trial", "Reconstructed saved nominal trial showing FFT versus MUSIC behavior in intersection."),
+    ("model_order_nominal_comparison", "09_model_order_nominal_comparison.png", "Model-order comparison", "Nominal P_joint comparison across FFT, MDL, eigengap, and expected-order MUSIC."),
+    ("expected_order_nuisance_sweep", "10_expected_order_nuisance_sweep.png", "Expected-order nuisance sweep", "Expected-order nuisance-strength sweep across all three scenes."),
+    ("runtime_comparison", "11_nominal_runtime_comparison.png", "Runtime comparison", "Nominal runtime comparison for FFT and MUSIC across scenes."),
+    ("masked_observation_equation", "12_masked_observation_equation.png", "Masked observation equation", "Rendered masked observation model equation."),
+    ("music_pseudospectrum_equation", "13_music_pseudospectrum_equation.png", "MUSIC pseudospectrum equation", "Rendered MUSIC pseudospectrum equation."),
+)
 
 
 def _bundled_node() -> Path:
@@ -126,11 +142,36 @@ def _write_support_documents(slides: list[dict[str, object]], claims: list[dict[
     SOURCES_MD_PATH.write_text("\n".join(source_lines), encoding="utf-8")
 
 
+def _run_figure_scripts() -> dict[str, dict[str, str]]:
+    env = os.environ.copy()
+    env["PYTHON_BIN"] = sys.executable
+    subprocess.run(
+        ["bash", str(REPO_ROOT / "figure_scripts" / "run_all_figures.sh")],
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
+    )
+
+    manifest: dict[str, dict[str, str]] = {}
+    for figure_id, filename, title, caption in FIGURE_SPECS:
+        path = (REPO_ROOT / "figures" / filename).resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"Missing figure after generation: {path}")
+        manifest[figure_id] = {
+            "id": figure_id,
+            "filename": filename,
+            "title": title,
+            "caption": caption,
+            "path": str(path),
+        }
+    return manifest
+
+
 def _write_payload() -> None:
     slides = get_slide_dicts()
     claims = get_claim_dicts()
     sources = get_source_dicts()
-    figures = generate_figures()
+    figures = _run_figure_scripts()
     _write_support_documents(slides, claims, sources)
 
     payload = {

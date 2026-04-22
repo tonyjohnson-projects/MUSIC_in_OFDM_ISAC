@@ -282,7 +282,8 @@ def main() -> None:
         figure_filenames.extend(["representative_resource_mask.png", "representative_spectrum.png"])
     for filename in figure_filenames:
         print(f"- {output_root / 'figures' / filename}", flush=True)
-    print(f"CSV-driven plotting script: {REPO_ROOT / 'generate_figures.py'} story", flush=True)
+    print(f"Canonical figure scripts: {REPO_ROOT / 'figure_scripts'}", flush=True)
+    print(f"Run all canonical figures with: bash {REPO_ROOT / 'figure_scripts' / 'run_all_figures.sh'}", flush=True)
 
     first_study = studies[0]
     print(flush=True)

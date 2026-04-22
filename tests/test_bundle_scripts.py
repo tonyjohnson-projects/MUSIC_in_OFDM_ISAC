@@ -139,31 +139,40 @@ class BundleScriptsTest(unittest.TestCase):
         self.assertGreater(len(ablation_spectrum_rows), 0)
         self.assertEqual(sorted({row["dimension"] for row in ablation_spectrum_rows}), ["azimuth", "doppler", "range"])
 
-        subprocess.run(
-            [
-                str(REPO_ROOT / ".venv" / "bin" / "python"),
-                "scripts/plot_results_from_csv.py",
-                "--input-root",
-                str(REPO_ROOT / "results" / "quick"),
-                "--clean-output",
-            ],
-            cwd=REPO_ROOT,
-            text=True,
-            capture_output=True,
-            check=True,
+        figure_dir = REPO_ROOT / "results" / "quick" / "figure_checks"
+        scripts_to_check = (
+            "02_nominal_scene_verdict.py",
+            "03_nominal_trial_delta.py",
+            "04_scene_coherence_overlap.py",
+            "05_regime_map.py",
+            "11_nominal_runtime_comparison.py",
         )
-        figure_dir = REPO_ROOT / "results" / "quick" / "figures_from_csv"
-        expected_story_figures = {
-            "story_nominal_verdict_from_csv.png",
-            "story_intersection_resolution_from_csv.png",
-            "story_regime_map_from_csv.png",
-            "story_coherence_overlap_from_csv.png",
-            "story_pilot_only_collapse_from_csv.png",
-            "story_trial_delta_from_csv.png",
-        }
+        for script_name in scripts_to_check:
+            subprocess.run(
+                [
+                    str(REPO_ROOT / ".venv" / "bin" / "python"),
+                    str(REPO_ROOT / "figure_scripts" / script_name),
+                    "--input-root",
+                    str(REPO_ROOT / "results" / "quick"),
+                    "--output",
+                    str(figure_dir / script_name.replace(".py", ".png")),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
         actual_story_figures = {path.name for path in figure_dir.glob("*.png")}
-        self.assertEqual(actual_story_figures, expected_story_figures)
-        self.assertFalse((figure_dir / "sweep_bandwidth_span_from_csv.png").exists())
+        self.assertEqual(
+            actual_story_figures,
+            {
+                "02_nominal_scene_verdict.png",
+                "03_nominal_trial_delta.png",
+                "04_scene_coherence_overlap.png",
+                "05_regime_map.png",
+                "11_nominal_runtime_comparison.png",
+            },
+        )
 
     def test_run_study_supports_fast_iteration_flags_and_fixed_music_order(self) -> None:
         output_dir = REPO_ROOT / "results" / "test_fast_iter"
