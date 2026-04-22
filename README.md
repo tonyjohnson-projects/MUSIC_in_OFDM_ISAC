@@ -56,10 +56,11 @@ Focused diagnostics:
 - [figures](figures) — canonical flat folder of the current report and deck figures
 - [src/aisle_isac](src/aisle_isac) — estimator, channel, resource-grid, and reporting code
 - [run_study.py](run_study.py) — main CLI entrypoint
+- [generate_figures.py](generate_figures.py) — single source of truth for figure generation
 - [presentation](presentation) — PowerPoint deck source code
 - [artifacts/presentation](artifacts/presentation) — latest generated deck outputs and slide previews
-- [scripts/plot_results_from_csv.py](scripts/plot_results_from_csv.py) — generate story figures from saved CSVs
-- [scripts/generate_1d_motivation_figure.py](scripts/generate_1d_motivation_figure.py) — 1-D range-only motivation figure
+- [scripts/plot_results_from_csv.py](scripts/plot_results_from_csv.py) — compatibility wrapper for story-figure generation
+- [scripts/generate_1d_motivation_figure.py](scripts/generate_1d_motivation_figure.py) — compatibility wrapper for the 1-D motivation figure
 - [scripts/run_model_order_comparison_64trials.py](scripts/run_model_order_comparison_64trials.py) — nominal 64-trial MDL vs expected-order comparison
 - [scripts/run_staged_submission.py](scripts/run_staged_submission.py) — staged long-run helper for follow-on experiments
 - [report/current_assessment.tex](report/current_assessment.tex) — report source
@@ -75,7 +76,7 @@ Focused diagnostics:
 
 ```bash
 bash scripts/build_submission_bundle.sh
-PYTHONPATH=src .venv/bin/python scripts/plot_results_from_csv.py --input-root results/submission --clean-output
+PYTHONPATH=src .venv/bin/python generate_figures.py story --input-root results/submission --clean-output
 PYTHONPATH=src .venv/bin/python presentation/build_deck.py
 ```
 

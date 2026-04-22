@@ -31,8 +31,8 @@ for extra_path in (REPO_ROOT, REPO_ROOT / "src"):
 
 from presentation.claim_map import get_claim_dicts
 from presentation.deck_spec import get_slide_dicts
-from presentation.figures import generate_figures
 from presentation.sources import get_source_dicts
+from generate_figures import generate_figures
 
 
 def _bundled_node() -> Path:
