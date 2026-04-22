@@ -49,7 +49,7 @@ def _annotation_offset(kind: str, center_deg: float) -> tuple[float, float]:
     if kind == "truth":
         return ((-14.0, 10.0) if center_deg < 0.0 else (14.0, 10.0))
     if kind == "clutter":
-        return ((0.0, 5.5) if center_deg < 0.0 else (0.0, 4.8))
+        return ((0.0, 4.5) if center_deg < 0.0 else (0.0, 4.5))
     if kind == "multipath":
         return (0.0, 14.0)
     if abs(center_deg) > 50.0:
@@ -151,7 +151,7 @@ def make_figure(data_dir, output_path) -> None:
 
     ax_branch.text(
         -70.0,
-        67.8,
+        70.5,
         "4 secondary aliases\n61-64/64 trials",
         ha="left",
         va="center",
@@ -161,10 +161,10 @@ def make_figure(data_dir, output_path) -> None:
     )
 
     ax_branch.set_xlim(-75, 75)
-    ax_branch.set_ylim(0, 72)
+    ax_branch.set_ylim(0, 80)
     ax_branch.set_xlabel("Azimuth (°)")
     ax_branch.set_ylabel("Trials containing branch")
-    ax_branch.set_title("Azimuth-stage branches that survive across trials", loc="left", fontsize=12, fontweight="bold")
+    ax_branch.set_title("Azimuth-stage branches that survive across trials", loc="left", fontsize=12, fontweight="bold", pad=10)
     ax_branch.grid(True, axis="y", alpha=0.20)
 
     x = np.arange(len(key_branches))
@@ -193,7 +193,7 @@ def make_figure(data_dir, output_path) -> None:
             count = int(bar.get_height())
             ax_stage.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 1.1,
+                bar.get_height() + 0.9,
                 str(count),
                 ha="center",
                 va="bottom",
@@ -202,17 +202,17 @@ def make_figure(data_dir, output_path) -> None:
             )
     ax_stage.set_xticks(x)
     ax_stage.set_xticklabels(("T0", "T1 / endcap", "Left-rack", "Right-rack"))
-    ax_stage.set_ylim(0, 72)
+    ax_stage.set_ylim(0, 78)
     ax_stage.set_ylabel("Trials containing branch (of 64)")
-    ax_stage.set_title("Key branches from azimuth stage to final pair", loc="left", fontsize=12, fontweight="bold")
+    ax_stage.set_title("Key branches from azimuth stage to final pair", loc="left", fontsize=12, fontweight="bold", pad=10)
     ax_stage.grid(True, axis="y", alpha=0.20)
     ax_stage.legend(
         handles=(
-            Patch(facecolor="#697481", edgecolor="#4A4A4A", alpha=0.28, label="Azimuth-stage candidate set"),
-            Patch(facecolor="#697481", edgecolor="#4A4A4A", alpha=0.90, label="Final output pair"),
+            Patch(facecolor="#697481", edgecolor="#4A4A4A", alpha=0.28, label="In azimuth set"),
+            Patch(facecolor="#697481", edgecolor="#4A4A4A", alpha=0.90, label="In final pair"),
         ),
-        fontsize=8.5,
-        loc="upper right",
+        fontsize=8.3,
+        loc="upper left",
         frameon=False,
     )
 
