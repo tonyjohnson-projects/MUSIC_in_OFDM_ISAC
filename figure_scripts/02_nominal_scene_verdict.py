@@ -77,9 +77,11 @@ def make_figure(data_dir, output_path) -> None:
             fmt="o",
             markersize=9,
             color=METHOD_COLORS["fft_masked"],
-            mfc=METHOD_COLORS["fft_masked"],
-            mec="white",
-            mew=1.2,
+            # FIX: use markerfacecolor/markeredgecolor kwargs instead of mfc/mec
+            # so matplotlib doesn't add a Line2D background patch in the legend
+            markerfacecolor=METHOD_COLORS["fft_masked"],
+            markeredgecolor="white",
+            markeredgewidth=1.2,
             ecolor=METHOD_COLORS["fft_masked"],
             capsize=4,
             linewidth=2.2,
@@ -92,9 +94,9 @@ def make_figure(data_dir, output_path) -> None:
             fmt="s",
             markersize=9,
             color=METHOD_COLORS["music_masked"],
-            mfc=METHOD_COLORS["music_masked"],
-            mec="white",
-            mew=1.2,
+            markerfacecolor=METHOD_COLORS["music_masked"],
+            markeredgecolor="white",
+            markeredgewidth=1.2,
             ecolor=METHOD_COLORS["music_masked"],
             capsize=4,
             linewidth=2.2,
@@ -109,10 +111,22 @@ def make_figure(data_dir, output_path) -> None:
             delta_label = f"FFT +{abs(delta):.2f}"
             delta_color = METHOD_COLORS["fft_masked"]
         else:
-            delta_label = f"Near tie ({delta:+.2f})"
+            delta_label = f"Tie ({delta:+.2f})"
             delta_color = "#444444"
 
-        ax.text(1.03, y_value, delta_label, va="center", ha="left", fontsize=10, color=delta_color, fontweight="bold")
+        # FIX: anchor delta labels on the right edge of the axes (x=1.0 in axes
+        # coords) so they never overflow the figure boundary.
+        ax.text(
+            0.99,
+            y_value,
+            delta_label,
+            va="center",
+            ha="right",
+            fontsize=10,
+            color=delta_color,
+            fontweight="bold",
+            transform=ax.get_yaxis_transform(),  # x in axes coords, y in data coords
+        )
         ax.text(
             -0.02,
             y_value,
@@ -125,26 +139,22 @@ def make_figure(data_dir, output_path) -> None:
         )
 
     ax.axvline(0.5, color="#D8D8D8", linestyle="--", linewidth=1.0)
-    ax.set_xlim(0.0, 1.14)
+    ax.set_xlim(0.0, 1.0)
     ax.set_ylim(-0.7, len(scene_classes) - 0.3)
     ax.set_yticks([])
     ax.set_xlabel("Nominal Joint-Resolution Probability")
-    if {"intersection", "open_aisle", "rack_aisle"}.issubset(scene_deltas):
-        title = "MUSIC only wins the nominal intersection scene\n64-trial FR1 nominal point with 95% Wilson intervals"
-    elif len(scene_classes) == 1:
-        scene_class = scene_classes[0]
-        delta = scene_deltas.get(scene_class, 0.0)
-        winner = "MUSIC" if delta > 0.05 else "FFT" if delta < -0.05 else "Neither method"
-        verb = "wins" if abs(delta) > 0.05 else "separates"
-        title = (
-            f"{winner} {verb} this nominal {scene_label_from_rows(rows, scene_class)} case\n"
-            "Single available scene with 95% Wilson intervals"
-        )
-    else:
-        title = "Nominal scene verdicts\nSaved 64-trial FR1 point with 95% Wilson intervals"
-    ax.set_title(title, loc="left", fontsize=14, fontweight="bold")
+
+    # FIX: simplified title — single concise line
+    ax.set_title("Nominal scene verdicts (64-trial FR1, 95% Wilson intervals)", loc="left", fontsize=14, fontweight="bold")
+
     ax.grid(True, axis="x", alpha=0.20)
-    ax.legend(frameon=False, loc="lower right")
+
+    # FIX: suppress the error-bar line handles so only the marker glyphs appear
+    # in the legend, eliminating the background-line artifact.
+    handles, labels = ax.get_legend_handles_labels()
+    clean_handles = [h[0] if hasattr(h, "__getitem__") else h for h in handles]
+    ax.legend(clean_handles, labels, frameon=False, loc="lower right")
+
     ax.invert_yaxis()
     fig.tight_layout()
     save_figure(fig, output_path)

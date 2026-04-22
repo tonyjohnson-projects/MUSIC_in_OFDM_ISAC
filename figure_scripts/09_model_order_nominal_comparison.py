@@ -27,28 +27,33 @@ def make_figure(output_path) -> None:
     method_order = ("fft", "mdl", "eigengap", "expected")
     method_labels = {"fft": "FFT", "mdl": "MDL MUSIC", "eigengap": "Eigengap MUSIC", "expected": "Expected-order MUSIC"}
     method_colors = {"fft": METHOD_COLORS["fft_masked"], "mdl": "#7F7F7F", "eigengap": "#009E73", "expected": METHOD_COLORS["music_masked"]}
-    method_markers = {"fft": "o", "mdl": "D", "eigengap": "^", "expected": "s"}
 
     fig, ax = plt.subplots(figsize=(10.5, 4.8))
     y_positions = np.arange(len(scene_order), dtype=float)
     offsets = np.linspace(-0.24, 0.24, len(method_order))
     for scene_index, scene in enumerate(scene_order):
-        values = [records[scene][method] for method in method_order]
-        ax.hlines(y_positions[scene_index], min(values), max(values), color="#D7D7D7", linewidth=2.5)
         for offset, method in zip(offsets, method_order, strict=True):
             value = records[scene][method]
-            ax.scatter(
-                value,
+            ax.barh(
                 y_positions[scene_index] + offset,
-                s=90,
+                value,
+                height=0.15,
                 color=method_colors[method],
-                marker=method_markers[method],
-                edgecolors="white",
-                linewidths=1.1,
                 label=method_labels[method] if scene_index == 0 else None,
                 zorder=3,
             )
-            ax.text(value + 0.015, y_positions[scene_index] + offset, f"{value:.3f}", va="center", fontsize=9)
+            
+            text_color = "#D55E00" if method == "mdl" else ("#009E73" if method == "eigengap" else "black")
+            font_weight = "bold" if method in ("mdl", "eigengap") else "normal"
+            ax.text(
+                value + 0.015,
+                y_positions[scene_index] + offset,
+                f"{value:.3f}",
+                va="center",
+                fontsize=9,
+                color=text_color,
+                fontweight=font_weight
+            )
         ax.text(-0.02, y_positions[scene_index], scene_labels[scene], ha="right", va="center", fontsize=11, fontweight="bold", color=SCENE_COLORS[scene])
 
     ax.set_xlim(0.0, 1.08)
@@ -57,7 +62,7 @@ def make_figure(output_path) -> None:
     ax.set_xlabel("Nominal joint-resolution probability")
     ax.set_title("Model-order diagnosis at the nominal point", loc="left", fontsize=14, fontweight="bold")
     ax.grid(True, axis="x", alpha=0.2)
-    ax.legend(frameon=False, loc="lower right", ncol=2)
+    ax.legend(frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
     ax.invert_yaxis()
     fig.tight_layout()
     save_figure(fig, output_path)
