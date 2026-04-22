@@ -9,7 +9,7 @@
 \usepackage{amssymb}
 \usepackage{array}
 \usepackage{tabularx}
-\graphicspath{{../results/submission/figures_from_csv/}{results/submission/figures_from_csv/}{../results/figures/}{results/figures/}}
+\graphicspath{{../figures/}{figures/}}
 
 \hypersetup{
   colorlinks=true,
@@ -95,7 +95,7 @@ The starting point for this project is a clean 1-D range-only comparison. Figure
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{motivation_1d_range.png}
+\includegraphics[width=\textwidth]{01_motivation_1d_range.png}
 \caption{1-D range-only motivation. With full frequency support and known model order ($K=2$), MUSIC resolves both targets at 0.70-cell separation in 100\% of 200 trials, while FFT cannot separate them at all. This project asks how much of this advantage survives when the observation is masked by communications scheduling, the model order is unknown, and structured clutter is present.}
 \label{fig:1d-motivation}
 \end{figure}
@@ -271,7 +271,7 @@ Figure~\ref{fig:coherence-overlap} makes this overlap explicit by comparing the 
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{story_coherence_overlap_from_csv.png}
+\includegraphics[width=\textwidth]{04_scene_coherence_overlap.png}
 \caption{Configured versus empirical target coherence in the saved nominal paired trial logs. The empirical finite-snapshot coherence distributions overlap strongly across scenes, so the scene comparison should be interpreted as a composite-regime comparison rather than a clean coherence sweep.}
 \label{fig:coherence-overlap}
 \end{figure}
@@ -359,7 +359,7 @@ Figure~\ref{fig:nominal-verdict} shows the same nominal result with Wilson inter
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{story_nominal_verdict_from_csv.png}
+\includegraphics[width=\textwidth]{02_nominal_scene_verdict.png}
 \caption{Nominal scene verdict from the saved submission bundle. The headline claim supported by the data is narrow: MUSIC wins only in the nominal intersection scene, loses in nominal open aisle, and does not produce a useful nominal result in rack aisle.}
 \label{fig:nominal-verdict}
 \end{figure}
@@ -397,7 +397,7 @@ Figure~\ref{fig:trial-delta} shows the same comparison in continuous form using 
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{story_trial_delta_from_csv.png}
+\includegraphics[width=\textwidth]{03_nominal_trial_delta.png}
 \caption{Paired nominal trial deltas from the saved submission bundle. The intersection advantage is broad, open-aisle losses are systematic, and rack aisle is mostly a shared failure region with a small number of mixed outcomes.}
 \label{fig:trial-delta}
 \end{figure}
@@ -458,7 +458,7 @@ The project becomes more interesting when it is interpreted as a regime map rath
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{story_regime_map_from_csv.png}
+\includegraphics[width=\textwidth]{05_regime_map.png}
 \caption{Two-panel regime map from the saved submission bundle. Support-limited sweeps (allocation, occupancy, fragmentation, bandwidth, slow time) are separated from axis-isolated separation sweeps because they use different headline metrics. Cell color shows the mean MUSIC-minus-FFT delta within that sweep family, while the text shows the number of strong-win points with delta at least $+0.10$.}
 \label{fig:regime-map}
 \end{figure}
@@ -506,7 +506,7 @@ Figure~\ref{fig:rack-diagnostic} visualises this directly. The left panel histog
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{story_rack_aisle_diagnostic_from_csv.png}
+\includegraphics[width=\textwidth]{06_rack_aisle_failure_diagnostic.png}
 \caption{Rack-aisle azimuth-stage failure diagnostic. Left: histogram of azimuth candidates across 64 nominal trials, with truth target azimuths (blue dashed/solid) and clutter/multipath angles (red dotted/dash-dot). The persistent candidate near $-21.7^\circ$ aligns with the left-rack clutter at $-24^\circ$ and appears in every trial. Right: distribution of final detection azimuths showing that the nuisance branch captures 39\% of outputs, confirming spatial subspace capture as the failure mechanism.}
 \label{fig:rack-diagnostic}
 \end{figure}

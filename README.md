@@ -53,17 +53,21 @@ Focused diagnostics:
 
 ## Repository Layout
 
+- [figures](figures) — canonical flat folder of the current report and deck figures
 - [src/aisle_isac](src/aisle_isac) — estimator, channel, resource-grid, and reporting code
 - [run_study.py](run_study.py) — main CLI entrypoint
+- [presentation](presentation) — PowerPoint deck source code
+- [artifacts/presentation](artifacts/presentation) — latest generated deck outputs and slide previews
 - [scripts/plot_results_from_csv.py](scripts/plot_results_from_csv.py) — generate story figures from saved CSVs
 - [scripts/generate_1d_motivation_figure.py](scripts/generate_1d_motivation_figure.py) — 1-D range-only motivation figure
 - [scripts/run_model_order_comparison_64trials.py](scripts/run_model_order_comparison_64trials.py) — nominal 64-trial MDL vs expected-order comparison
 - [scripts/run_staged_submission.py](scripts/run_staged_submission.py) — staged long-run helper for follow-on experiments
 - [report/current_assessment.tex](report/current_assessment.tex) — report source
-- [results/submission](results/submission) — main submission output (64-trial FR1 bundle)
+- [artifacts/report/current_assessment.pdf](artifacts/report/current_assessment.pdf) — latest built report PDF
+- [results/submission/data](results/submission/data) — canonical submission CSV bundle
 - [results/analysis](results/analysis) — model-order comparison tables
-- [results/submission_nuisance](results/submission_nuisance) — 64-trial nuisance-strength sweep (MDL)
 - [results/submission_expected_order](results/submission_expected_order) — 64-trial nuisance-strength sweep (expected K=2)
+- [archive/results](archive/results) — archived quick runs, legacy figure trees, and unused result artifacts
 
 ## Running
 
@@ -72,6 +76,7 @@ Focused diagnostics:
 ```bash
 bash scripts/build_submission_bundle.sh
 PYTHONPATH=src .venv/bin/python scripts/plot_results_from_csv.py --input-root results/submission --clean-output
+PYTHONPATH=src .venv/bin/python presentation/build_deck.py
 ```
 
 ### Follow-on analyses
@@ -101,7 +106,7 @@ PYTHONPATH=src .venv/bin/python run_study.py \
 
 ```bash
 cd report
-latexmk -pdf -outdir=build current_assessment.tex
+latexmk -pdf -outdir=../artifacts/report current_assessment.tex
 ```
 
 ## Limitations
