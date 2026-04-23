@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from matplotlib.lines import Line2D
+
 from common import (
     SCENE_COLORS,
     REPO_ROOT,
@@ -48,7 +50,7 @@ def make_figure(data_dir, output_path) -> None:
     }
 
     positions = np.arange(len(scene_classes), dtype=float)
-    fig, ax = plt.subplots(figsize=(10.6, 5.0))
+    fig, ax = plt.subplots(figsize=(10.6, 4.8))
     box = ax.boxplot(
         empirical_by_scene,
         positions=positions,
@@ -77,28 +79,55 @@ def make_figure(data_dir, output_path) -> None:
         )
         configured_value = configured_by_scene[scene_class]
         ax.scatter(position, configured_value, marker="D", s=54, color="#111111", zorder=4)
-        ax.text(position, 1.04, f"mean {np.mean(values):.2f}", ha="center", va="top", fontsize=9, fontweight="bold")
 
     ax.set_xticks(positions)
-    ax.set_xticklabels([scene_label_from_rows(nominal_rows, scene_class) for scene_class in scene_classes])
+    ax.set_xticklabels(
+        [
+            f"{scene_label_from_rows(nominal_rows, scene_class)}\nmean {np.mean(values):.2f}"
+            for scene_class, values in zip(scene_classes, empirical_by_scene, strict=True)
+        ]
+    )
     ax.set_ylim(0.0, 1.08)
     ax.set_ylabel("Target Coherence")
+    if len(scene_classes) == 1:
+        title = f"{scene_label_from_rows(nominal_rows, scene_classes[0])}: empirical coherence spread"
+    else:
+        title = "Empirical coherence overlaps across scenes"
     ax.set_title(
-        "Empirical nominal coherence overlaps strongly across scenes\nConfigured coherence alone does not isolate the operating regimes",
+        title,
         loc="left",
         fontsize=14,
         fontweight="bold",
     )
-    ax.text(
-        0.01,
-        0.91,
-        "Circles = empirical finite-snapshot coherence per nominal trial; diamond = configured scene coherence",
-        transform=ax.transAxes,
-        va="top",
+    ax.legend(
+        handles=[
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="none",
+                markerfacecolor="#777777",
+                markeredgecolor="none",
+                markersize=7,
+                label="Trials",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="D",
+                color="none",
+                markerfacecolor="#111111",
+                markeredgecolor="#111111",
+                markersize=7,
+                label="Configured",
+            ),
+        ],
+        loc="lower left",
+        frameon=True,
         fontsize=9,
     )
     ax.grid(True, axis="y", alpha=0.20)
-    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.12, top=0.84)
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.18, top=0.88)
     save_figure(fig, output_path)
 
 

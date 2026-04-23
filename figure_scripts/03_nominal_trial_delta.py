@@ -45,9 +45,14 @@ def make_figure(data_dir, output_path) -> None:
         ]
 
     scene_classes = sorted(paired_by_scene, key=scene_key)
-    fig, ax = plt.subplots(figsize=(10.0, 5.4))
-    ax.axhspan(0.0, max(max(values) for values in paired_by_scene.values()) + 1.0e-9, color="#EAF2FB", alpha=0.65)
-    ax.axhspan(min(min(values) for values in paired_by_scene.values()) - 1.0e-9, 0.0, color="#FBECEC", alpha=0.65)
+    all_values = np.concatenate([np.asarray(values, dtype=float) for values in paired_by_scene.values()])
+    y_pad = 0.08 * (float(np.max(all_values)) - float(np.min(all_values)))
+    y_min = min(float(np.min(all_values)) - y_pad, -0.05)
+    y_max = max(float(np.max(all_values)) + y_pad, 0.05)
+
+    fig, ax = plt.subplots(figsize=(10.0, 5.2))
+    ax.axhspan(0.0, y_max, color="#EAF2FB", alpha=0.65)
+    ax.axhspan(y_min, 0.0, color="#FBECEC", alpha=0.65)
     ax.axhline(0.0, color="#333333", linewidth=1.2)
 
     positions = np.arange(len(scene_classes), dtype=float)
@@ -78,35 +83,38 @@ def make_figure(data_dir, output_path) -> None:
             color=SCENE_COLORS.get(scene_class, "#777777"),
             edgecolors="none",
         )
-        win_fraction = float(np.mean(values > 0.0))
-        ax.text(position, np.percentile(values, 85) + 0.02, f"{win_fraction:.0%} trials favor MUSIC", ha="center", fontsize=9)
 
-    ax.set_xticks(positions)
-    ax.set_xticklabels([scene_label_from_rows(nominal_rows, scene_class) for scene_class in scene_classes])
-    ax.set_ylabel("FFT RMSE - MUSIC RMSE\n(positive means MUSIC is better)")
     win_fractions = {
         scene_class: float(np.mean(np.asarray(paired_by_scene[scene_class], dtype=float) > 0.0))
         for scene_class in scene_classes
     }
+    ax.set_xticks(positions)
+    ax.set_xticklabels(
+        [
+            f"{scene_label_from_rows(nominal_rows, scene_class)}\n{win_fractions[scene_class]:.0%} MUSIC"
+            for scene_class in scene_classes
+        ]
+    )
+    ax.set_ylabel("FFT - MUSIC RMSE")
     if {"intersection", "open_aisle"}.issubset(scene_classes):
-        title = "Intersection gains are broad, while open-aisle losses are systematic\nPaired nominal trial deltas at the 64-trial FR1 nominal point"
+        title = "MUSIC helps intersections, not open aisles"
     elif len(scene_classes) == 1:
         scene_class = scene_classes[0]
+        label = scene_label_from_rows(nominal_rows, scene_class)
         if win_fractions[scene_class] > 0.55:
-            verdict = "mostly favor MUSIC"
+            title = f"{label}: MUSIC favored"
         elif win_fractions[scene_class] < 0.45:
-            verdict = "mostly favor FFT"
+            title = f"{label}: FFT favored"
         else:
-            verdict = "split almost evenly"
-        title = (
-            f"{scene_label_from_rows(nominal_rows, scene_class)} trial deltas {verdict}\n"
-            "Paired nominal trials at the saved FR1 point"
-        )
+            title = f"{label}: split result"
     else:
-        title = "Paired nominal trial deltas by scene\nPositive values mean MUSIC reduces assignment RMSE"
+        title = "Trial deltas by scene"
     ax.set_title(title, loc="left", fontsize=14, fontweight="bold")
+    ax.text(0.985, 0.96, "MUSIC better", transform=ax.transAxes, ha="right", va="top", fontsize=9)
+    ax.text(0.985, 0.04, "FFT better", transform=ax.transAxes, ha="right", va="bottom", fontsize=9)
+    ax.set_ylim(y_min, y_max)
     ax.grid(True, axis="y", alpha=0.20)
-    fig.subplots_adjust(left=0.11, right=0.98, bottom=0.11, top=0.87)
+    fig.subplots_adjust(left=0.10, right=0.98, bottom=0.18, top=0.88)
     save_figure(fig, output_path)
 
 
