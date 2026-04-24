@@ -29,3 +29,6 @@ report/*.synctex.gz
 
 # Runtime logs
 *.log
+
+# Personal study notes
+/presentation

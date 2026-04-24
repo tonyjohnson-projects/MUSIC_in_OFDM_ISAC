@@ -1,0 +1,181 @@
+\documentclass[10pt]{article}
+
+\usepackage[
+  paperwidth=16in,
+  paperheight=9in,
+  margin=0in
+]{geometry}
+\usepackage{amsmath}
+\usepackage{fontspec}
+\usepackage{tikz}
+\usepackage{unicode-math}
+\usepackage{xcolor}
+\usetikzlibrary{calc}
+
+\pagestyle{empty}
+\pagecolor{white}
+
+\newcommand{\usecalibrifrom}[1]{%
+  \setmainfont[
+    Path={#1},
+    UprightFont={Calibri.ttf},
+    BoldFont={Calibrib.ttf},
+    ItalicFont={Calibrii.ttf},
+    BoldItalicFont={Calibriz.ttf}
+  ]{Calibri}%
+  \setsansfont[
+    Path={#1},
+    UprightFont={Calibri.ttf},
+    BoldFont={Calibrib.ttf},
+    ItalicFont={Calibrii.ttf},
+    BoldItalicFont={Calibriz.ttf}
+  ]{Calibri}%
+}
+
+\IfFileExists{/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/Calibri.ttf}{
+  \usecalibrifrom{/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts/}
+}{
+  \IfFileExists{/Applications/Microsoft Word.app/Contents/Resources/DFonts/Calibri.ttf}{
+    \usecalibrifrom{/Applications/Microsoft Word.app/Contents/Resources/DFonts/}
+  }{
+    \IfFontExistsTF{Calibri}{
+      \setmainfont{Calibri}
+      \setsansfont{Calibri}
+    }{
+      \setmainfont{Arial}
+      \setsansfont{Arial}
+    }
+  }
+}
+
+\IfFontExistsTF{Cambria Math}{
+  \setmathfont{Cambria Math}
+}{
+  \setmathfont{STIX Two Math}
+}
+
+\definecolor{decknavy}{HTML}{10213D}
+\definecolor{deckmuted}{HTML}{556070}
+\definecolor{deckline}{HTML}{D8D3CA}
+\definecolor{deckcream}{HTML}{FAF2E6}
+\definecolor{deckblue}{HTML}{2C6F9F}
+
+\newcommand{\heading}[1]{%
+  {\sffamily\bfseries\fontsize{20}{24}\selectfont\color{decknavy}#1}%
+}
+\newcommand{\bodytext}[1]{%
+  {\sffamily\fontsize{14}{18}\selectfont\color{deckmuted}#1}%
+}
+\newcommand{\eqtext}[1]{%
+  {\fontsize{23}{29}\selectfont\color{black}#1}%
+}
+
+\begin{document}
+\sffamily
+\begin{tikzpicture}[remember picture, overlay, x=1in, y=1in]
+  \coordinate (page) at (current page.south west);
+
+  \node[
+    anchor=north west,
+    text width=14.7in,
+    align=left
+  ] at ($(page)+(0.65in,8.48in)$) {%
+    {\bfseries\fontsize{29}{34}\selectfont\color{decknavy}
+      Signal model implemented in the project}%
+  };
+
+  \node[
+    anchor=north west,
+    text width=14.7in,
+    align=left
+  ] at ($(page)+(0.65in,8.04in)$) {%
+    \bodytext{Known-symbol OFDM sensing cube shared by the masked FFT and staged MUSIC paths.}%
+  };
+
+  \node[
+    anchor=north west,
+    draw=deckline,
+    rounded corners=8pt,
+    fill=white,
+    inner sep=13pt,
+    text width=14.15in,
+    align=left
+  ] at ($(page)+(0.65in,7.50in)$) {%
+    \heading{Noisy radar cube}\\[0.16in]
+    \eqtext{%
+      \(\displaystyle
+      Y[h,n,m]
+      =
+      \sum_{k\in\mathcal P}
+      \alpha_k\,a_h(\theta_k)\,b_n(R_k)\,d_m(v_k)\,s_k[m]
+      + W[h,n,m]
+      \)
+    }\\[0.10in]
+    \bodytext{%
+      \(h\): horizontal virtual channel;\quad
+      \(n\): subcarrier;\quad
+      \(m\): slow-time snapshot;\quad
+      \(k\): path index for movers, static clutter, and coherent multipath.
+    }%
+  };
+
+  \node[
+    anchor=north west,
+    draw=deckline,
+    rounded corners=8pt,
+    fill=white,
+    inner sep=13pt,
+    text width=6.70in,
+    align=left
+  ] at ($(page)+(0.65in,5.55in)$) {%
+    \heading{Steering terms}\\[0.18in]
+    \eqtext{\(\displaystyle a_h(\theta)=\exp\!\left(-j2\pi x_h\sin\theta/\lambda\right)\)}\\[0.18in]
+    \eqtext{\(\displaystyle b_n(R)=\exp\!\left(-j2\pi f_n\,2R/c\right)\)}\\[0.18in]
+    \eqtext{\(\displaystyle d_m(v)=\exp\!\left(j2\pi t_m\,2v/\lambda\right)\)}\\[0.13in]
+    \bodytext{Range and Doppler use round-trip delay and radial velocity conventions.}%
+  };
+
+  \node[
+    anchor=north west,
+    draw=deckline,
+    rounded corners=8pt,
+    fill=white,
+    inner sep=13pt,
+    text width=6.75in,
+    align=left
+  ] at ($(page)+(8.15in,5.55in)$) {%
+    \heading{Masked OFDM observation}\\[0.18in]
+    \eqtext{\(\displaystyle Z[h,n,m]=Y[h,n,m]\,M[n,m]\,X[n,m]\)}\\[0.18in]
+    \eqtext{\(\displaystyle Z=Y\odot M\odot X\)}\\[0.14in]
+    \bodytext{%
+      \(M[n,m]\in\{0,1\}\) is the communications schedule mask, and
+      \(X[n,m]\) is the transmitted OFDM symbol. Both are broadcast over \(h\).
+    }%
+  };
+
+  \node[
+    anchor=north west,
+    draw=deckline,
+    rounded corners=8pt,
+    fill=deckcream,
+    inner sep=13pt,
+    text width=14.15in,
+    align=left
+  ] at ($(page)+(0.65in,2.45in)$) {%
+    \heading{Known-symbol recovery}\\[0.10in]
+    \eqtext{%
+      \(\displaystyle
+      \widetilde{Y}[h,n,m]=
+      \begin{cases}
+        Z[h,n,m]/X[n,m], & (n,m)\in\Omega_{\mathrm{known}},\\
+        0, & \text{otherwise.}
+      \end{cases}
+      \)
+    }\\[0.10in]
+    \bodytext{%
+      Unknown resource elements are zero-filled, not reconstructed; \(\widetilde{Y}\) is the common estimator input.
+    }%
+  };
+
+\end{tikzpicture}
+\end{document}
